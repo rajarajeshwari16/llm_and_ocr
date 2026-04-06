@@ -3,6 +3,7 @@ logging:
 
 runtime:
   max_workers: 4
+  use_vision_ocr: true
 
 render:
   dpi: 250
@@ -10,10 +11,10 @@ render:
 
 ocr:
   tesseract_cmd: C:\Program Files\Tesseract-OCR\tesseract.exe
-  tesseract_config: "--oem 3 --psm 6"
-  line_y_tolerance: 0.6
-  word_gap_tolerance: 1.8
-  paragraph_gap_multiplier: 1.5
+  tesseract_config: "--oem 1 --psm 3"
+  line_y_tolerance: 0.5
+  word_gap_tolerance: 1.5
+  paragraph_gap_multiplier: 1.2
 
 translation:
   project: scholarship-463408
@@ -22,7 +23,7 @@ translation:
   model: gemini-2.5-pro
   batch_size: 20
   temperature: 0.1
-  max_output_tokens: 2048
+  max_output_tokens: 8192
   max_retries: 5
   retry_base_delay_seconds: 2.0
 

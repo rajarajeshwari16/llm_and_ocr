@@ -17,6 +17,13 @@ from translate import VertexTranslator, chunk_segments_for_translation
 LOGGER = logging.getLogger("pdf_translate")
 BASE_DIR = Path(__file__).resolve().parent
 
+LANG_NAMES = {
+    "kan": "Kannada",
+    "hin": "Hindi",
+    "tam": "Tamil",
+    "tel": "Telugu",
+}
+
 
 def load_config(config_path: Path) -> Dict:
     with config_path.open("r", encoding="utf-8") as handle:
@@ -73,7 +80,12 @@ def resolve_config_relative_path(base_dir: Path, raw_path: Optional[str]) -> Opt
 
 def save_page_images(input_pdf: Path, image_dir: Path, dpi: int, fmt: str) -> List[Path]:
     LOGGER.info("Rendering PDF pages to images at %s DPI", dpi)
-    pil_images = convert_from_path(str(input_pdf), dpi=dpi, fmt=fmt)
+    pil_images = convert_from_path(
+        str(input_pdf),
+        dpi=dpi,
+        fmt=fmt,
+        poppler_path=r"C:\Program Files\poppler-25.12.0\Library\bin",
+    )
     image_paths: List[Path] = []
 
     for page_index, image in enumerate(tqdm(pil_images, desc="Saving page images"), start=1):
@@ -129,6 +141,31 @@ def flatten(nested_segments: Sequence[Sequence[OCRSegment]]) -> List[OCRSegment]
     return flattened
 
 
+def vision_ocr_pages(
+    image_paths: Sequence[Path],
+    translator,
+    lang_name: str,
+) -> List[Dict]:
+    from PIL import Image as PILImage
+    segments: List[Dict] = []
+    for page_number, image_path in enumerate(tqdm(image_paths, desc="Vision OCR+Translate"), start=1):
+        with PILImage.open(image_path) as img:
+            img_w, img_h = img.size
+        blocks = translator.ocr_translate_page_image(str(image_path), page_number, lang_name)
+        for block in blocks:
+            x = int(block.get("x_pct", 0) * img_w)
+            y = int(block.get("y_pct", 0) * img_h)
+            w = int(block.get("w_pct", 1.0) * img_w)
+            h = int(block.get("h_pct", 0.05) * img_h)
+            segments.append({
+                "translated_text": block.get("translated_text", ""),
+                "bbox": [x, y, w, h],
+                "page": page_number,
+                "text": block.get("translated_text", ""),
+            })
+    return segments
+
+
 def attach_translations(
     segments: Sequence[OCRSegment],
     translated_texts: Sequence[str],
@@ -143,6 +180,52 @@ def attach_translations(
 
 def ensure_output_dir(output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def get_numbered_output_path(output_path: Path) -> Path:
+    if not output_path.exists():
+        return output_path
+    stem = output_path.stem
+    suffix = output_path.suffix
+    parent = output_path.parent
+    counter = 1
+    while True:
+        candidate = parent / f"{stem}_{counter}{suffix}"
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
+def summarize_translated_text(translated_segments: List[Dict], translator) -> str:
+    full_text = "\n".join(
+        seg.get("translated_text", "").strip()
+        for seg in translated_segments
+        if seg.get("translated_text", "").strip()
+    )
+    if not full_text:
+        return ""
+
+    prompt = (
+        "You are a legal document analyst. Read the following translated land/legal document text and provide a structured English summary.\n"
+        "Rules:\n"
+        "- Output ONLY the summary. No explanations or commentary.\n"
+        "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
+        "- Structure the summary with these sections if the information is present:\n"
+        "  1. Document Type\n"
+        "  2. Parties Involved\n"
+        "  3. Property Details\n"
+        "  4. Key Dates\n"
+        "  5. Legal Terms / Conditions\n"
+        "  6. Summary\n\n"
+        f"Document Text:\n{full_text}"
+    )
+
+    response = translator.client.models.generate_content(
+        model=translator.model_name,
+        contents=prompt,
+        config=translator.generation_config,
+    )
+    return (response.text or "").strip()
 
 
 def main() -> None:
@@ -167,8 +250,22 @@ def main() -> None:
     max_workers = args.max_workers or runtime_config.get("max_workers") or max(1, mp.cpu_count() - 1)
     image_format = render_config.get("image_format", "png")
 
+    use_vision_ocr = config.get("runtime", {}).get("use_vision_ocr", False)
+    output_pdf = get_numbered_output_path(output_pdf)
+    LOGGER.info("Output will be saved to %s", output_pdf)
     LOGGER.info("Starting pipeline for %s", input_pdf)
-    validate_tesseract(config.get("ocr", {}), args.lang)
+
+    translator = VertexTranslator(
+        project=args.project or translator_config.get("project"),
+        credentials_path=resolve_config_relative_path(config_dir, translator_config.get("credentials_path")),
+        location=args.location or translator_config.get("location", "us-central1"),
+        model_name=args.model or translator_config.get("model", "gemini-2.5-pro"),
+        temperature=translator_config.get("temperature", 0.1),
+        max_output_tokens=translator_config.get("max_output_tokens", 2048),
+        batch_size=translator_config.get("batch_size", 20),
+        max_retries=translator_config.get("max_retries", 5),
+        retry_base_delay=translator_config.get("retry_base_delay_seconds", 2.0),
+    )
 
     with tempfile.TemporaryDirectory(prefix="pdf_translate_") as tmp_dir_name:
         tmp_dir = Path(tmp_dir_name)
@@ -176,35 +273,27 @@ def main() -> None:
         image_dir.mkdir(parents=True, exist_ok=True)
 
         image_paths = save_page_images(input_pdf, image_dir, dpi=dpi, fmt=image_format)
-        page_segments = ocr_pages_in_parallel(image_paths, args.lang, config, max_workers=max_workers)
-        segments = flatten(page_segments)
 
-        LOGGER.info("Collected %s OCR text segments", len(segments))
-
-        translated_segments: List[Dict] = []
-        if segments:
-            translator = VertexTranslator(
-                project=args.project or translator_config.get("project"),
-                credentials_path=resolve_config_relative_path(config_dir, translator_config.get("credentials_path")),
-                location=args.location or translator_config.get("location", "us-central1"),
-                model_name=args.model or translator_config.get("model", "gemini-1.5-pro"),
-                temperature=translator_config.get("temperature", 0.1),
-                max_output_tokens=translator_config.get("max_output_tokens", 2048),
-                batch_size=translator_config.get("batch_size", 20),
-                max_retries=translator_config.get("max_retries", 5),
-                retry_base_delay=translator_config.get("retry_base_delay_seconds", 2.0),
-            )
-            translation_batches = list(chunk_segments_for_translation(segments, translator.batch_size))
-            for batch in tqdm(
-                translation_batches,
-                total=len(translation_batches),
-                desc="Translating batches",
-            ):
-                originals = [segment.text for segment in batch]
-                translated = translator.translate_text_batch(originals)
-                translated_segments.extend(attach_translations(batch, translated))
+        if use_vision_ocr:
+            LOGGER.info("Using Gemini Vision OCR (skipping Tesseract)")
+            lang_name = LANG_NAMES.get(args.lang, args.lang)
+            translated_segments = vision_ocr_pages(image_paths, translator, lang_name)
+            LOGGER.info("Vision OCR produced %s segments", len(translated_segments))
         else:
-            LOGGER.warning("OCR produced no text segments. Rebuilding PDF with original page images only.")
+            validate_tesseract(config.get("ocr", {}), args.lang)
+            page_segments = ocr_pages_in_parallel(image_paths, args.lang, config, max_workers=max_workers)
+            segments = flatten(page_segments)
+            LOGGER.info("Collected %s OCR text segments", len(segments))
+
+            translated_segments = []
+            if segments:
+                translation_batches = list(chunk_segments_for_translation(segments, translator.batch_size))
+                for batch in tqdm(translation_batches, total=len(translation_batches), desc="Translating batches"):
+                    originals = [segment.text for segment in batch]
+                    translated = translator.translate_text_batch(originals)
+                    translated_segments.extend(attach_translations(batch, translated))
+            else:
+                LOGGER.warning("OCR produced no text segments. Rebuilding PDF with original page images only.")
 
         rebuild_translated_pdf(
             page_image_paths=image_paths,
@@ -212,6 +301,14 @@ def main() -> None:
             output_pdf_path=output_pdf,
             rebuild_config=config.get("rebuild", {}),
         )
+
+        if translated_segments:
+            LOGGER.info("Generating document summary...")
+            summary = summarize_translated_text(translated_segments, translator)
+            if summary:
+                summary_path = output_pdf.with_suffix(".summary.txt")
+                summary_path.write_text(summary, encoding="utf-8")
+                LOGGER.info("Summary saved to %s", summary_path)
 
     LOGGER.info("Finished. Output saved to %s", output_pdf)
 
