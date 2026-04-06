@@ -1,0 +1,37 @@
+logging:
+  level: INFO
+
+runtime:
+  max_workers: 4
+
+render:
+  dpi: 250
+  image_format: png
+
+ocr:
+  tesseract_cmd: C:\Program Files\Tesseract-OCR\tesseract.exe
+  tesseract_config: "--oem 3 --psm 6"
+  line_y_tolerance: 0.6
+  word_gap_tolerance: 1.8
+  paragraph_gap_multiplier: 1.5
+
+translation:
+  project: scholarship-463408
+  credentials_path: gemini_variable.json
+  location: us-central1
+  model: gemini-2.5-pro
+  batch_size: 20
+  temperature: 0.1
+  max_output_tokens: 2048
+  max_retries: 5
+  retry_base_delay_seconds: 2.0
+
+rebuild:
+  preserve_background: false
+  font_name: helv
+  font_size_scale: 0.75
+  min_font_size: 8
+  max_font_size: 20
+  text_margin: 2
+  overlay_fill_color: [1, 1, 1]
+  text_color: [0, 0, 0]
