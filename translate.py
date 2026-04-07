@@ -193,6 +193,12 @@ class VertexTranslator:
             "- Output ONLY the JSON array"
         )
 
+        json_config = GenerateContentConfig(
+            temperature=self.generation_config.temperature,
+            max_output_tokens=self.generation_config.max_output_tokens,
+            response_mime_type="application/json",
+        )
+
         for attempt in range(1, self.max_retries + 1):
             try:
                 image_part = genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
@@ -200,7 +206,7 @@ class VertexTranslator:
                 response = self.client.models.generate_content(
                     model=self.model_name,
                     contents=[image_part, text_part],
-                    config=self.generation_config,
+                    config=json_config,
                 )
                 raw = (response.text or "").strip()
                 raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
