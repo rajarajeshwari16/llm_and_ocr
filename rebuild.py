@@ -68,12 +68,20 @@ def rebuild_translated_pdf(
     for page_number, image_path in enumerate(page_image_paths, start=1):
         width, height = image_dimensions(image_path)
         page = doc.new_page(width=width, height=height)
+        page_segments = segments_by_page.get(page_number, [])
+
+        # If no translated segments or all are empty, keep the original image as-is
+        has_content = any((seg.get("translated_text") or "").strip() for seg in page_segments)
+        if not has_content:
+            page.insert_image(page.rect, filename=str(image_path))
+            continue
+
         if preserve_background:
             page.insert_image(page.rect, filename=str(image_path))
         else:
             page.draw_rect(page.rect, color=overlay_fill, fill=overlay_fill, overlay=False)
 
-        for segment in segments_by_page.get(page_number, []):
+        for segment in page_segments:
             translated_text = (segment.get("translated_text") or "").strip()
             if not translated_text:
                 continue

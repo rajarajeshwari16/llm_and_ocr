@@ -22,6 +22,7 @@ LANG_NAMES = {
     "hin": "Hindi",
     "tam": "Tamil",
     "tel": "Telugu",
+    "eng": "English",
 }
 
 
@@ -43,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input", required=True, help="Path to scanned PDF.")
     parser.add_argument("--output", required=True, help="Path for translated PDF.")
-    parser.add_argument("--lang", required=True, choices=["hin", "kan", "tam", "tel"], help="Tesseract OCR language code.")
+    parser.add_argument("--lang", required=True, choices=["hin", "kan", "tam", "tel", "eng"], help="Tesseract OCR language code.")
     parser.add_argument("--config", help="Path to YAML config file. Defaults to config.yaml next to main.py.")
     parser.add_argument("--project", help="Google Cloud project ID override.")
     parser.add_argument("--location", help="Vertex AI location override, e.g. us-central1.")
@@ -145,24 +146,45 @@ def vision_ocr_pages(
     image_paths: Sequence[Path],
     translator,
     lang_name: str,
+    max_workers: int = 4,
 ) -> List[Dict]:
     from PIL import Image as PILImage
-    segments: List[Dict] = []
-    for page_number, image_path in enumerate(tqdm(image_paths, desc="Vision OCR+Translate"), start=1):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def process_page(args):
+        page_number, image_path = args
         with PILImage.open(image_path) as img:
             img_w, img_h = img.size
         blocks = translator.ocr_translate_page_image(str(image_path), page_number, lang_name)
+        non_empty = sum(1 for b in blocks if (b.get("translated_text") or "").strip())
+        LOGGER.info("Page %s: %s blocks extracted, %s non-empty", page_number, len(blocks), non_empty)
+        page_segments = []
         for block in blocks:
             x = int(block.get("x_pct", 0) * img_w)
             y = int(block.get("y_pct", 0) * img_h)
             w = int(block.get("w_pct", 1.0) * img_w)
             h = int(block.get("h_pct", 0.05) * img_h)
-            segments.append({
+            page_segments.append({
                 "translated_text": block.get("translated_text", ""),
                 "bbox": [x, y, w, h],
                 "page": page_number,
                 "text": block.get("translated_text", ""),
             })
+        return page_number, page_segments
+
+    tasks = list(enumerate(image_paths, start=1))
+    results: Dict[int, List[Dict]] = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(process_page, t): t[0] for t in tasks}
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Vision OCR+Translate"):
+            page_number, page_segments = future.result()
+            results[page_number] = page_segments
+
+    # Return segments sorted by page order
+    segments: List[Dict] = []
+    for page_number in sorted(results.keys()):
+        segments.extend(results[page_number])
     return segments
 
 
@@ -292,7 +314,7 @@ def main() -> None:
         if use_vision_ocr:
             LOGGER.info("Using Gemini Vision OCR (skipping Tesseract)")
             lang_name = LANG_NAMES.get(args.lang, args.lang)
-            translated_segments = vision_ocr_pages(image_paths, translator, lang_name)
+            translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=max_workers)
             LOGGER.info("Vision OCR produced %s segments", len(translated_segments))
         else:
             validate_tesseract(config.get("ocr", {}), args.lang)

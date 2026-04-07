@@ -74,7 +74,7 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: 
 
     if use_vision_ocr:
         lang_name = LANG_NAMES.get(lang, lang)
-        translated_segments = vision_ocr_pages(image_paths, translator, lang_name)
+        translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=4)
     else:
         from ocr import validate_tesseract
         validate_tesseract(config.get("ocr", {}), lang)
@@ -100,7 +100,7 @@ async def translate_pdf(
 ):
     """
     Upload a scanned PDF and get back a download URL for the translated PDF.
-    lang: hin | kan | tam | tel
+    lang: hin | kan | tam | tel | eng
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -146,7 +146,7 @@ async def summarize_pdf(
 ):
     """
     Upload a scanned PDF and get back a structured English summary.
-    lang: hin | kan | tam | tel
+    lang: hin | kan | tam | tel | eng
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
