@@ -196,36 +196,51 @@ def get_numbered_output_path(output_path: Path) -> Path:
         counter += 1
 
 
-def summarize_translated_text(translated_segments: List[Dict], translator) -> str:
+def summarize_translated_text(translated_segments: List[Dict], translator) -> Dict:
     full_text = "\n".join(
         seg.get("translated_text", "").strip()
         for seg in translated_segments
         if seg.get("translated_text", "").strip()
     )
     if not full_text:
-        return ""
+        return {}
 
     prompt = (
         "You are a legal document analyst. Read the following translated land/legal document text and provide a structured English summary.\n"
         "Rules:\n"
-        "- Output ONLY the summary. No explanations or commentary.\n"
+        "- Output ONLY a valid JSON object. No explanations, no markdown, no extra text.\n"
         "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
-        "- Structure the summary with these sections if the information is present:\n"
-        "  1. Document Type\n"
-        "  2. Parties Involved\n"
-        "  3. Property Details\n"
-        "  4. Key Dates\n"
-        "  5. Legal Terms / Conditions\n"
-        "  6. Summary\n\n"
+        "- Use exactly these keys:\n"
+        '  "document_type": string\n'
+        '  "parties_involved": string\n'
+        '  "property_details": string\n'
+        '  "key_dates": string\n'
+        '  "legal_terms": string\n'
+        '  "summary": string - write a detailed, elaborate paragraph explaining the full context of the document, '
+        'what it means legally, who is involved, what land or property is affected, what actions were taken, '
+        'and any important implications. Minimum 5-6 sentences.\n'
+        "- If a section has no information, use an empty string.\n\n"
         f"Document Text:\n{full_text}"
+    )
+
+    from google.genai.types import GenerateContentConfig
+    json_config = GenerateContentConfig(
+        temperature=translator.generation_config.temperature,
+        max_output_tokens=translator.generation_config.max_output_tokens,
+        response_mime_type="application/json",
     )
 
     response = translator.client.models.generate_content(
         model=translator.model_name,
         contents=prompt,
-        config=translator.generation_config,
+        config=json_config,
     )
-    return (response.text or "").strip()
+
+    import json, re
+    raw = (response.text or "").strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+    raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)
+    return json.loads(raw.strip())
 
 
 def main() -> None:

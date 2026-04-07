@@ -167,7 +167,7 @@ class VertexTranslator:
         self,
         image_path: str,
         page_number: int,
-        lang_name: str = "Kannada",
+        lang_name: str,
     ) -> list:
         from pathlib import Path as _Path
         from google.genai import types as genai_types
