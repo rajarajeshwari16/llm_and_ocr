@@ -190,7 +190,10 @@ class VertexTranslator:
             "- Preserve all names, numbers, survey numbers, dates, and legal terms exactly\n"
             "- Include every text block including table headers and cells\n"
             "- Do NOT add explanations or commentary\n"
-            "- Output ONLY the JSON array"
+            "- Output ONLY the JSON array\n"
+            "- CRITICAL: translated_text must ALWAYS be in English only. Never return the original language text.\n"
+            "- If text is already in English, keep it as-is in English.\n"
+            "- If text is in any Indian language, you MUST translate it to English. Never copy the original script."
         )
 
         json_config = GenerateContentConfig(

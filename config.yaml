@@ -29,10 +29,11 @@ translation:
 
 rebuild:
   preserve_background: false
+  dpi: 250
   font_name: helv
-  font_size_scale: 0.75
-  min_font_size: 8
-  max_font_size: 20
+  font_size_scale: 0.5
+  min_font_size: 6
+  max_font_size: 11
   text_margin: 2
   overlay_fill_color: [1, 1, 1]
   text_color: [0, 0, 0]

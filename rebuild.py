@@ -61,12 +61,20 @@ def rebuild_translated_pdf(
     text_margin = rebuild_config.get("text_margin", 2)
     preserve_background = rebuild_config.get("preserve_background", False)
 
+    # Bounding boxes from Gemini are in pixel space (250 DPI).
+    # PyMuPDF uses points (72 DPI). Scale factor = 72 / 250.
+    dpi = rebuild_config.get("dpi", 250)
+    scale = 72.0 / dpi
+
     segments_by_page: Dict[int, List[Dict]] = {}
     for segment in translated_segments:
         segments_by_page.setdefault(int(segment["page"]), []).append(segment)
 
     for page_number, image_path in enumerate(page_image_paths, start=1):
-        width, height = image_dimensions(image_path)
+        img_width, img_height = image_dimensions(image_path)
+        # Page size in points
+        width = int(img_width * scale)
+        height = int(img_height * scale)
         page = doc.new_page(width=width, height=height)
         page_segments = segments_by_page.get(page_number, [])
 
@@ -87,6 +95,9 @@ def rebuild_translated_pdf(
                 continue
 
             x, y, w, h = segment["bbox"]
+            # Scale pixel coords to points
+            x, y, w, h = x * scale, y * scale, w * scale, h * scale
+
             rect = fitz.Rect(x, y, x + w, y + h)
             text_rect = fitz.Rect(
                 rect.x0 + text_margin,
@@ -96,23 +107,22 @@ def rebuild_translated_pdf(
             )
             font_size = approximate_font_size(h, font_size_scale, min_font_size, max_font_size)
             wrapped_text = wrap_text_to_width(page, translated_text, font_name, font_size, text_rect.width)
-            while font_size > min_font_size:
-                line_count = max(1, len(wrapped_text.splitlines()))
-                if text_fits_box(line_count, font_size, text_rect.height):
-                    break
-                font_size -= 0.5
-                wrapped_text = wrap_text_to_width(page, translated_text, font_name, font_size, text_rect.width)
 
             page.draw_rect(rect, color=overlay_fill, fill=overlay_fill, overlay=preserve_background)
-            page.insert_textbox(
-                text_rect,
-                wrapped_text,
-                fontsize=font_size,
-                fontname=font_name,
-                color=text_color,
-                align=fitz.TEXT_ALIGN_LEFT,
-                overlay=True,
-            )
+            line_height = font_size * 1.2
+            for i, line in enumerate(wrapped_text.splitlines()):
+                ly = rect.y0 + text_margin + (i + 1) * line_height
+                # Strictly clip — stop if next line would go below box
+                if ly > rect.y1:
+                    break
+                page.insert_text(
+                    fitz.Point(rect.x0 + text_margin, ly),
+                    line,
+                    fontsize=font_size,
+                    fontname=font_name,
+                    color=text_color,
+                    overlay=True,
+                )
 
     output_pdf_path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output_pdf_path), deflate=True)

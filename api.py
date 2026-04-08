@@ -1,3 +1,6 @@
+import html
+import html
+import json
 import logging
 import tempfile
 from pathlib import Path
@@ -92,6 +95,102 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: 
     return image_paths, translated_segments
 
 
+def build_summary_html(summary: dict) -> str:
+    pretty_json = html.escape(json.dumps(summary, ensure_ascii=False, indent=2))
+    sections = []
+    for key, value in summary.items():
+        label = html.escape(key.replace("_", " ").title())
+        content = html.escape("" if value is None else str(value))
+        sections.append(
+            f"<section><h2>{label}</h2><div class='value'>{content}</div></section>"
+        )
+
+    body = "\n".join(sections) if sections else "<p>No summary content available.</p>"
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Document Summary</title>
+  <style>
+    body {{
+      margin: 0;
+      background: #f3f4f6;
+      color: #1f2937;
+      font-family: Georgia, "Times New Roman", serif;
+    }}
+    .page {{
+      max-width: 900px;
+      margin: 32px auto;
+      background: #fff;
+      padding: 40px 48px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+      border: 1px solid #e5e7eb;
+    }}
+    h1 {{
+      margin: 0 0 24px;
+      font-size: 32px;
+      border-bottom: 2px solid #111827;
+      padding-bottom: 12px;
+    }}
+    h2 {{
+      margin: 24px 0 8px;
+      font-size: 18px;
+    }}
+    .value {{
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 16px;
+    }}
+    details {{
+      margin-top: 28px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 20px;
+    }}
+    pre {{
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      padding: 16px;
+      overflow: auto;
+      font-size: 13px;
+    }}
+    @media print {{
+      body {{ background: white; }}
+      .page {{
+        margin: 0;
+        max-width: none;
+        box-shadow: none;
+        border: none;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>Document Summary</h1>
+    {body}
+    <details>
+      <summary>Raw JSON</summary>
+      <pre>{pretty_json}</pre>
+    </details>
+  </main>
+</body>
+</html>"""
+
+
+def build_summary_text(summary: dict) -> str:
+    lines = ["Document Summary", "=" * 16, ""]
+    for key, value in summary.items():
+        label = key.replace("_", " ").title()
+        content = "" if value is None else str(value)
+        lines.append(f"{label}:")
+        lines.append(content)
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
 @app.post("/translate")
 async def translate_pdf(
     request: Request,
@@ -141,6 +240,7 @@ async def translate_pdf(
 
 @app.post("/summary")
 async def summarize_pdf(
+    request: Request,
     file: UploadFile = File(...),
     lang: str = Form("hin"),
 ):
@@ -153,6 +253,13 @@ async def summarize_pdf(
 
     config, config_path = load_config()
     translator = build_translator(config, config_path)
+
+    summary_txt_filename = f"summary_{Path(file.filename).stem}.txt"
+    summary_json_filename = f"summary_{Path(file.filename).stem}.json"
+    summary_html_filename = f"summary_{Path(file.filename).stem}.html"
+    summary_txt_path = OUTPUT_DIR / summary_txt_filename
+    summary_json_path = OUTPUT_DIR / summary_json_filename
+    summary_html_path = OUTPUT_DIR / summary_html_filename
 
     with tempfile.TemporaryDirectory(prefix="api_summary_") as tmp:
         input_pdf = Path(tmp) / file.filename
@@ -167,4 +274,15 @@ async def summarize_pdf(
             LOGGER.exception("Summary generation failed")
             raise HTTPException(status_code=500, detail=str(exc))
 
-        return JSONResponse(content=summary)
+        summary_txt_path.write_text(build_summary_text(summary), encoding="utf-8")
+        summary_json_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        summary_html_path.write_text(build_summary_html(summary), encoding="utf-8")
+
+        base_url = str(request.base_url).rstrip("/")
+        response_payload = dict(summary)
+        response_payload["url_summary"] = f"{base_url}/download/{summary_txt_filename}"
+
+        return JSONResponse(content=response_payload)
