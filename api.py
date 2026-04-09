@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from main import (
@@ -36,9 +36,18 @@ app = FastAPI(title="PDF Translate API")
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "api_outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
+STATIC_DIR = BASE_DIR / "static"
 
 # Serve files in api_outputs/ as static downloads
 app.mount("/download", StaticFiles(directory=str(OUTPUT_DIR)), name="download")
+
+# Serve the frontend UI
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_ui():
+    return FileResponse(str(STATIC_DIR / "index.html"))
 
 
 def load_config():
@@ -189,6 +198,50 @@ def build_summary_text(summary: dict) -> str:
         lines.append(content)
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+@app.post("/translate-text")
+async def translate_pdf_text(
+    file: UploadFile = File(...),
+    lang: str = Form("hin"),
+):
+    """
+    Upload a scanned PDF and get back the translated text as JSON (no PDF rebuild).
+    lang: hin | kan | tam | tel | eng
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    config, config_path = load_config()
+    translator = build_translator(config, config_path)
+
+    with tempfile.TemporaryDirectory(prefix="api_translate_text_") as tmp:
+        input_pdf = Path(tmp) / file.filename
+        input_pdf.write_bytes(await file.read())
+
+        try:
+            _, translated_segments = run_ocr_and_translate(
+                input_pdf, lang, config, translator
+            )
+        except Exception as exc:
+            LOGGER.exception("Translation (text) failed")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    # Group segments by page, ordered by vertical position
+    pages: dict = {}
+    for seg in translated_segments:
+        page_num = int(seg.get("page", 1))
+        text = (seg.get("translated_text") or "").strip()
+        if text:
+            pages.setdefault(page_num, []).append((seg.get("bbox", [0, 0, 0, 0]), text))
+
+    result_pages = []
+    for page_num in sorted(pages.keys()):
+        segments = sorted(pages[page_num], key=lambda s: (s[0][1], s[0][0]))  # sort by y then x
+        page_text = "\n".join(text for _, text in segments)
+        result_pages.append({"page": page_num, "text": page_text})
+
+    return JSONResponse(content={"pages": result_pages})
 
 
 @app.post("/translate")
