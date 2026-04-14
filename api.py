@@ -107,11 +107,13 @@ def get_token_usage_and_cost(translator: VertexTranslator) -> dict:
     }
 
 
-def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: VertexTranslator):
+def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: VertexTranslator, need_layout: bool = False):
     render_cfg = config.get("render", {})
     dpi = render_cfg.get("dpi", 250)
     image_format = render_cfg.get("image_format", "png")
-    use_vision_ocr = config.get("runtime", {}).get("use_vision_ocr", False)
+    # For PDF rebuild we need accurate bounding boxes — keep Vision OCR even for English.
+    # For text-only endpoints (summary, translate-text) Tesseract is sufficient and free.
+    use_vision_ocr = config.get("runtime", {}).get("use_vision_ocr", False) and (lang != "eng" or need_layout)
 
     tmp_dir = tempfile.mkdtemp(prefix="pdf_translate_")
     image_dir = Path(tmp_dir) / "pages"
@@ -119,9 +121,12 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: 
 
     image_paths = save_page_images(input_pdf, image_dir, dpi=dpi, fmt=image_format)
 
+    is_english = lang == "eng"
     if use_vision_ocr:
         lang_name = LANG_NAMES.get(lang, lang)
-        translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=4)
+        if is_english:
+            LOGGER.info("Source language is English — Vision OCR will extract text only, no translation.")
+        translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=4, english_only=is_english)
     else:
         from ocr import validate_tesseract
         validate_tesseract(config.get("ocr", {}), lang)
@@ -129,12 +134,19 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: 
         segments = flatten(page_segments)
         translated_segments = []
         if segments:
-            from main import chunk_segments_for_translation
-            batches = list(chunk_segments_for_translation(segments, translator.batch_size))
-            for batch in batches:
-                originals = [s.text for s in batch]
-                translated = translator.translate_text_batch(originals)
-                translated_segments.extend(attach_translations(batch, translated))
+            if is_english:
+                LOGGER.info("Source language is English — skipping translation, using OCR text as-is.")
+                translated_segments = [
+                    {**seg.to_dict(), "translated_text": seg.text}
+                    for seg in segments
+                ]
+            else:
+                from main import chunk_segments_for_translation
+                batches = list(chunk_segments_for_translation(segments, translator.batch_size))
+                for batch in batches:
+                    originals = [s.text for s in batch]
+                    translated = translator.translate_text_batch(originals)
+                    translated_segments.extend(attach_translations(batch, translated))
 
     return image_paths, translated_segments
 
@@ -292,6 +304,24 @@ async def translate_pdf(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
+    file_bytes = await file.read()
+
+    # English PDFs are already in the target language — return the original as-is.
+    if lang == "eng":
+        output_filename = f"translated_{file.filename}"
+        output_pdf = OUTPUT_DIR / output_filename
+        output_pdf.write_bytes(file_bytes)
+        base_url = str(request.base_url).rstrip("/")
+        LOGGER.info("English PDF — returning original file as translated output (no rebuild needed).")
+        return JSONResponse(content={
+            "message": "Document is already in English. Original returned as-is.",
+            "download_url": f"{base_url}/download/{output_filename}",
+            "filename": output_filename,
+            "token_usage": {"model": "none", "translation_input_tokens": 0, "translation_output_tokens": 0,
+                            "summary_input_tokens": 0, "summary_output_tokens": 0,
+                            "total_tokens": 0, "estimated_cost_usd": 0.0},
+        })
+
     config, config_path = load_config()
     translator = build_translator(config, config_path)
 
@@ -300,11 +330,11 @@ async def translate_pdf(
 
     with tempfile.TemporaryDirectory(prefix="api_translate_") as tmp:
         input_pdf = Path(tmp) / file.filename
-        input_pdf.write_bytes(await file.read())
+        input_pdf.write_bytes(file_bytes)
 
         try:
             image_paths, translated_segments = run_ocr_and_translate(
-                input_pdf, lang, config, translator
+                input_pdf, lang, config, translator, need_layout=True
             )
             rebuild_translated_pdf(
                 page_image_paths=image_paths,

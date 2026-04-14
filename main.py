@@ -147,6 +147,7 @@ def vision_ocr_pages(
     translator,
     lang_name: str,
     max_workers: int = 4,
+    english_only: bool = False,
 ) -> List[Dict]:
     from PIL import Image as PILImage
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -155,7 +156,7 @@ def vision_ocr_pages(
         page_number, image_path = args
         with PILImage.open(image_path) as img:
             img_w, img_h = img.size
-        blocks = translator.ocr_translate_page_image(str(image_path), page_number, lang_name)
+        blocks = translator.ocr_translate_page_image(str(image_path), page_number, lang_name, english_only=english_only)
         non_empty = sum(1 for b in blocks if (b.get("translated_text") or "").strip())
         LOGGER.info("Page %s: %s blocks extracted, %s non-empty", page_number, len(blocks), non_empty)
         page_segments = []
@@ -297,7 +298,7 @@ def main() -> None:
     max_workers = args.max_workers or runtime_config.get("max_workers") or max(1, mp.cpu_count() - 1)
     image_format = render_config.get("image_format", "png")
 
-    use_vision_ocr = config.get("runtime", {}).get("use_vision_ocr", False)
+    use_vision_ocr = config.get("runtime", {}).get("use_vision_ocr", False) and args.lang != "eng"
     output_pdf = get_numbered_output_path(output_pdf)
     LOGGER.info("Output will be saved to %s", output_pdf)
     LOGGER.info("Starting pipeline for %s", input_pdf)
@@ -324,7 +325,10 @@ def main() -> None:
         if use_vision_ocr:
             LOGGER.info("Using Gemini Vision OCR (skipping Tesseract)")
             lang_name = LANG_NAMES.get(args.lang, args.lang)
-            translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=max_workers)
+            is_english = args.lang == "eng"
+            if is_english:
+                LOGGER.info("Source language is English — Vision OCR will extract text only, no translation.")
+            translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=max_workers, english_only=is_english)
             LOGGER.info("Vision OCR produced %s segments", len(translated_segments))
         else:
             validate_tesseract(config.get("ocr", {}), args.lang)
@@ -334,11 +338,18 @@ def main() -> None:
 
             translated_segments = []
             if segments:
-                translation_batches = list(chunk_segments_for_translation(segments, translator.batch_size))
-                for batch in tqdm(translation_batches, total=len(translation_batches), desc="Translating batches"):
-                    originals = [segment.text for segment in batch]
-                    translated = translator.translate_text_batch(originals)
-                    translated_segments.extend(attach_translations(batch, translated))
+                if args.lang == "eng":
+                    LOGGER.info("Source language is English — skipping translation, using OCR text as-is.")
+                    translated_segments = [
+                        {**seg.to_dict(), "translated_text": seg.text}
+                        for seg in segments
+                    ]
+                else:
+                    translation_batches = list(chunk_segments_for_translation(segments, translator.batch_size))
+                    for batch in tqdm(translation_batches, total=len(translation_batches), desc="Translating batches"):
+                        originals = [segment.text for segment in batch]
+                        translated = translator.translate_text_batch(originals)
+                        translated_segments.extend(attach_translations(batch, translated))
             else:
                 LOGGER.warning("OCR produced no text segments. Rebuilding PDF with original page images only.")
 

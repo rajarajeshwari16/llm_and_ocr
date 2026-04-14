@@ -168,6 +168,7 @@ class VertexTranslator:
         image_path: str,
         page_number: int,
         lang_name: str,
+        english_only: bool = False,
     ) -> list:
         from pathlib import Path as _Path
         from google.genai import types as genai_types
@@ -175,28 +176,49 @@ class VertexTranslator:
         image_bytes = _Path(image_path).read_bytes()
         mime_type = "image/png" if image_path.lower().endswith(".png") else "image/jpeg"
 
-        prompt = (
-            f"You are analyzing a scanned {lang_name} legal/land document image.\n"
-            "Extract every visible text block and translate each one to English.\n"
-            "Return ONLY a valid JSON array. No markdown, no explanation, nothing else.\n"
-            "Format:\n"
-            '[\n'
-            '  {"translated_text": "English text here", "x_pct": 0.05, "y_pct": 0.02, "w_pct": 0.9, "h_pct": 0.04, "align": "center", "bold": true},\n'
-            '  ...\n'
-            ']\n'
-            "Rules:\n"
-            "- x_pct, y_pct = top-left corner as fraction of image width/height (0.0 to 1.0)\n"
-            "- w_pct, h_pct = width/height as fraction of image dimensions (0.0 to 1.0)\n"
-            "- align: detect text alignment from the image - use 'left', 'center', or 'right'\n"
-            "- bold: true if the text appears bold or underlined in the image, false otherwise\n"
-            "- Preserve all names, numbers, survey numbers, dates, and legal terms exactly\n"
-            "- Include every text block including table headers and cells\n"
-            "- Do NOT add explanations or commentary\n"
-            "- Output ONLY the JSON array\n"
-            "- CRITICAL: translated_text must ALWAYS be in English only. Never return the original language text.\n"
-            "- If text is already in English, keep it as-is in English.\n"
-            "- If text is in any Indian language, you MUST translate it to English. Never copy the original script."
-        )
+        if english_only:
+            prompt = (
+                "You are analyzing a scanned English legal/land document image.\n"
+                "Extract every visible text block exactly as it appears. Do NOT translate or modify any text.\n"
+                "Return ONLY a valid JSON array. No markdown, no explanation, nothing else.\n"
+                "Format:\n"
+                '[\n'
+                '  {"translated_text": "text exactly as it appears", "x_pct": 0.05, "y_pct": 0.02, "w_pct": 0.9, "h_pct": 0.04, "align": "center", "bold": true},\n'
+                '  ...\n'
+                ']\n'
+                "Rules:\n"
+                "- x_pct, y_pct = top-left corner as fraction of image width/height (0.0 to 1.0)\n"
+                "- w_pct, h_pct = width/height as fraction of image dimensions (0.0 to 1.0)\n"
+                "- align: detect text alignment from the image - use 'left', 'center', or 'right'\n"
+                "- bold: true if the text appears bold or underlined in the image, false otherwise\n"
+                "- Preserve all names, numbers, survey numbers, dates, and legal terms exactly\n"
+                "- Include every text block including table headers and cells\n"
+                "- Output ONLY the JSON array\n"
+                "- Copy the text verbatim — do NOT translate, paraphrase, or alter it in any way."
+            )
+        else:
+            prompt = (
+                f"You are analyzing a scanned {lang_name} legal/land document image.\n"
+                "Extract every visible text block and translate each one to English.\n"
+                "Return ONLY a valid JSON array. No markdown, no explanation, nothing else.\n"
+                "Format:\n"
+                '[\n'
+                '  {"translated_text": "English text here", "x_pct": 0.05, "y_pct": 0.02, "w_pct": 0.9, "h_pct": 0.04, "align": "center", "bold": true},\n'
+                '  ...\n'
+                ']\n'
+                "Rules:\n"
+                "- x_pct, y_pct = top-left corner as fraction of image width/height (0.0 to 1.0)\n"
+                "- w_pct, h_pct = width/height as fraction of image dimensions (0.0 to 1.0)\n"
+                "- align: detect text alignment from the image - use 'left', 'center', or 'right'\n"
+                "- bold: true if the text appears bold or underlined in the image, false otherwise\n"
+                "- Preserve all names, numbers, survey numbers, dates, and legal terms exactly\n"
+                "- Include every text block including table headers and cells\n"
+                "- Do NOT add explanations or commentary\n"
+                "- Output ONLY the JSON array\n"
+                "- CRITICAL: translated_text must ALWAYS be in English only. Never return the original language text.\n"
+                "- If text is already in English, keep it as-is in English.\n"
+                "- If text is in any Indian language, you MUST translate it to English. Never copy the original script."
+            )
 
         json_config = GenerateContentConfig(
             temperature=self.generation_config.temperature,
