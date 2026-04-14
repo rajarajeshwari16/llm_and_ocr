@@ -181,12 +181,14 @@ class VertexTranslator:
             "Return ONLY a valid JSON array. No markdown, no explanation, nothing else.\n"
             "Format:\n"
             '[\n'
-            '  {"translated_text": "English text here", "x_pct": 0.05, "y_pct": 0.02, "w_pct": 0.9, "h_pct": 0.04},\n'
+            '  {"translated_text": "English text here", "x_pct": 0.05, "y_pct": 0.02, "w_pct": 0.9, "h_pct": 0.04, "align": "center", "bold": true},\n'
             '  ...\n'
             ']\n'
             "Rules:\n"
             "- x_pct, y_pct = top-left corner as fraction of image width/height (0.0 to 1.0)\n"
             "- w_pct, h_pct = width/height as fraction of image dimensions (0.0 to 1.0)\n"
+            "- align: detect text alignment from the image - use 'left', 'center', or 'right'\n"
+            "- bold: true if the text appears bold or underlined in the image, false otherwise\n"
             "- Preserve all names, numbers, survey numbers, dates, and legal terms exactly\n"
             "- Include every text block including table headers and cells\n"
             "- Do NOT add explanations or commentary\n"
@@ -212,6 +214,26 @@ class VertexTranslator:
                     config=json_config,
                 )
                 raw = (response.text or "").strip()
+                # Log token usage — handle different field names across model versions
+                usage = getattr(response, "usage_metadata", None)
+                if usage:
+                    input_tokens = (
+                        getattr(usage, "prompt_token_count", None) or
+                        getattr(usage, "input_token_count", None) or
+                        getattr(usage, "total_input_tokens", None) or 0
+                    )
+                    output_tokens = (
+                        getattr(usage, "candidates_token_count", None) or
+                        getattr(usage, "output_token_count", None) or
+                        getattr(usage, "total_output_tokens", None) or 0
+                    )
+                    LOGGER.info(
+                        "Vision OCR page %s token usage — input: %s, output: %s, total: %s | fields: %s",
+                        page_number, input_tokens, output_tokens, input_tokens + output_tokens,
+                        [a for a in dir(usage) if not a.startswith("_")],
+                    )
+                    self._translation_input_tokens = getattr(self, "_translation_input_tokens", 0) + input_tokens
+                    self._translation_output_tokens = getattr(self, "_translation_output_tokens", 0) + output_tokens
                 raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
                 raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)
                 raw = raw.strip()

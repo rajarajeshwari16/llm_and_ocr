@@ -1,3 +1,4 @@
+import asyncio
 import html
 import html
 import json
@@ -63,13 +64,47 @@ def build_translator(config: dict, config_path: Path) -> VertexTranslator:
         project=translator_cfg.get("project"),
         credentials_path=resolve_config_relative_path(config_dir, translator_cfg.get("credentials_path")),
         location=translator_cfg.get("location", "us-central1"),
-        model_name=translator_cfg.get("model", "gemini-2.5-pro"),
+        model_name=translator_cfg.get("model"),
         temperature=translator_cfg.get("temperature", 0.1),
         max_output_tokens=translator_cfg.get("max_output_tokens", 16384),
         batch_size=translator_cfg.get("batch_size", 20),
         max_retries=translator_cfg.get("max_retries", 5),
         retry_base_delay=translator_cfg.get("retry_base_delay_seconds", 2.0),
     )
+
+
+# Gemini 2.5 Flash pricing (per 1M tokens)
+MODEL_PRICING = {
+    "gemini-2.5-pro":              {"input": 1.25,  "output": 10.00},
+    "gemini-2.5-flash":            {"input": 0.30,  "output": 2.50},
+    "gemini-2.5-flash-lite":       {"input": 0.10,  "output": 0.40},
+    "gemini-1.5-flash":            {"input": 0.075, "output": 0.30},
+    "gemini-3-flash-preview":      {"input": 0.50,  "output": 3.00},
+    "gemini-3.1-flash-lite-preview": {"input": 0.25, "output": 1.50},
+}
+
+def get_token_usage_and_cost(translator: VertexTranslator) -> dict:
+    trans_in  = getattr(translator, "_translation_input_tokens", 0)
+    trans_out = getattr(translator, "_translation_output_tokens", 0)
+    summ_in   = getattr(translator, "_summary_input_tokens", 0)
+    summ_out  = getattr(translator, "_summary_output_tokens", 0)
+    total_in  = trans_in + summ_in
+    total_out = trans_out + summ_out
+    pricing   = MODEL_PRICING.get(translator.model_name, {"input": 0, "output": 0})
+    cost_usd  = (total_in * pricing["input"] + total_out * pricing["output"]) / 1_000_000
+    LOGGER.info(
+        "Token usage — model: %s | translation in: %s out: %s | summary in: %s out: %s | total: %s | cost: $%.6f",
+        translator.model_name, trans_in, trans_out, summ_in, summ_out, total_in + total_out, cost_usd,
+    )
+    return {
+        "model": translator.model_name,
+        "translation_input_tokens": trans_in,
+        "translation_output_tokens": trans_out,
+        "summary_input_tokens": summ_in,
+        "summary_output_tokens": summ_out,
+        "total_tokens": total_in + total_out,
+        "estimated_cost_usd": round(cost_usd, 6),
+    }
 
 
 def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: VertexTranslator):
@@ -284,10 +319,12 @@ async def translate_pdf(
     base_url = str(request.base_url).rstrip("/")
     download_url = f"{base_url}/download/{output_filename}"
 
+    token_info = get_token_usage_and_cost(translator)
     return JSONResponse(content={
         "message": "Translation successful",
         "download_url": download_url,
         "filename": output_filename,
+        "token_usage": token_info,
     })
 
 
@@ -337,5 +374,71 @@ async def summarize_pdf(
         base_url = str(request.base_url).rstrip("/")
         response_payload = dict(summary)
         response_payload["url_summary"] = f"{base_url}/download/{summary_txt_filename}"
+        response_payload["token_usage"] = get_token_usage_and_cost(translator)
 
         return JSONResponse(content=response_payload)
+
+
+@app.post("/compare")
+async def compare_models(
+    file: UploadFile = File(...),
+    lang: str = Form("hin"),
+):
+    """
+    Run the same document through both gemini-2.5-pro and gemini-2.5-flash in parallel.
+    Returns token usage and estimated cost for both models — no PDF output.
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    file_bytes = await file.read()
+    config, config_path = load_config()
+
+    COMPARE_MODELS = [
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite-preview",
+    ]
+
+    def run_for_model(model_name: str) -> dict:
+        # Build a translator with overridden model
+        translator_cfg = config.get("translation", {})
+        config_dir = config_path.parent
+        translator = VertexTranslator(
+            project=translator_cfg.get("project"),
+            credentials_path=resolve_config_relative_path(config_dir, translator_cfg.get("credentials_path")),
+            location=translator_cfg.get("location", "us-central1"),
+            model_name=model_name,
+            temperature=translator_cfg.get("temperature", 0.1),
+            max_output_tokens=translator_cfg.get("max_output_tokens", 16384),
+            batch_size=translator_cfg.get("batch_size", 20),
+            max_retries=translator_cfg.get("max_retries", 5),
+            retry_base_delay=translator_cfg.get("retry_base_delay_seconds", 2.0),
+        )
+
+        with tempfile.TemporaryDirectory(prefix=f"api_compare_{model_name}_") as tmp:
+            input_pdf = Path(tmp) / file.filename
+            input_pdf.write_bytes(file_bytes)
+            try:
+                _, translated_segments = run_ocr_and_translate(
+                    input_pdf, lang, config, translator
+                )
+                summarize_translated_text(translated_segments, translator)
+            except Exception as exc:
+                LOGGER.exception("Compare failed for model %s", model_name)
+                return {"model": model_name, "error": str(exc)}
+
+        return get_token_usage_and_cost(translator)
+
+    # Run all models in parallel using threads
+    loop = asyncio.get_event_loop()
+    results = await asyncio.gather(
+        *[loop.run_in_executor(None, run_for_model, m) for m in COMPARE_MODELS]
+    )
+
+    return JSONResponse(content={
+        "document": file.filename,
+        "language": lang,
+        "results": [
+            {"model": COMPARE_MODELS[i], **results[i]} for i in range(len(COMPARE_MODELS))
+        ],
+    })

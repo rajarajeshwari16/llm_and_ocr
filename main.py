@@ -169,6 +169,8 @@ def vision_ocr_pages(
                 "bbox": [x, y, w, h],
                 "page": page_number,
                 "text": block.get("translated_text", ""),
+                "align": block.get("align", "left"),
+                "bold": block.get("bold", False),
             })
         return page_number, page_segments
 
@@ -258,6 +260,14 @@ def summarize_translated_text(translated_segments: List[Dict], translator) -> Di
         config=json_config,
     )
 
+    # Track summary tokens separately
+    usage = getattr(response, "usage_metadata", None)
+    if usage:
+        input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        translator._summary_input_tokens = getattr(translator, "_summary_input_tokens", 0) + input_tokens
+        translator._summary_output_tokens = getattr(translator, "_summary_output_tokens", 0) + output_tokens
+
     import json, re
     raw = (response.text or "").strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
@@ -296,7 +306,7 @@ def main() -> None:
         project=args.project or translator_config.get("project"),
         credentials_path=resolve_config_relative_path(config_dir, translator_config.get("credentials_path")),
         location=args.location or translator_config.get("location", "us-central1"),
-        model_name=args.model or translator_config.get("model", "gemini-2.5-pro"),
+        model_name=args.model or translator_config.get("model"),
         temperature=translator_config.get("temperature", 0.1),
         max_output_tokens=translator_config.get("max_output_tokens", 2048),
         batch_size=translator_config.get("batch_size", 20),

@@ -106,20 +106,35 @@ def rebuild_translated_pdf(
                 rect.y1 - text_margin,
             )
             font_size = approximate_font_size(h, font_size_scale, min_font_size, max_font_size)
-            wrapped_text = wrap_text_to_width(page, translated_text, font_name, font_size, text_rect.width)
+
+            # Use bold font if detected
+            is_bold = segment.get("bold", False)
+            effective_font = "hebo" if is_bold else font_name  # hebo = Helvetica Bold
+
+            align = segment.get("align", "left")
+            wrapped_text = wrap_text_to_width(page, translated_text, effective_font, font_size, text_rect.width)
 
             page.draw_rect(rect, color=overlay_fill, fill=overlay_fill, overlay=preserve_background)
             line_height = font_size * 1.2
             for i, line in enumerate(wrapped_text.splitlines()):
                 ly = rect.y0 + text_margin + (i + 1) * line_height
-                # Strictly clip — stop if next line would go below box
                 if ly > rect.y1:
                     break
+
+                # Calculate x position based on alignment
+                line_width = fitz.get_text_length(line, fontname=effective_font, fontsize=font_size)
+                if align == "center":
+                    lx = rect.x0 + (rect.width - line_width) / 2
+                elif align == "right":
+                    lx = rect.x1 - text_margin - line_width
+                else:
+                    lx = rect.x0 + text_margin
+
                 page.insert_text(
-                    fitz.Point(rect.x0 + text_margin, ly),
+                    fitz.Point(lx, ly),
                     line,
                     fontsize=font_size,
-                    fontname=font_name,
+                    fontname=effective_font,
                     color=text_color,
                     overlay=True,
                 )
