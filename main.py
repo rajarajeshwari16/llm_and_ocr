@@ -142,6 +142,32 @@ def flatten(nested_segments: Sequence[Sequence[OCRSegment]]) -> List[OCRSegment]
     return flattened
 
 
+def detect_page_language(text: str) -> str:
+    """Returns ISO 639-1 language code ('en', 'hi', etc.) or 'unknown' on failure."""
+    try:
+        from langdetect import detect
+        sample = text.strip()[:500]
+        if len(sample) < 20:
+            return "unknown"
+        return detect(sample)
+    except Exception:
+        return "unknown"
+
+
+def detect_image_language(image_path: str, ocr_config: Dict) -> str:
+    """Quick local Tesseract scan using English model to detect page language."""
+    try:
+        import pytesseract
+        from PIL import Image as PILImage
+        from ocr import configure_tesseract
+        configure_tesseract(ocr_config)
+        with PILImage.open(image_path) as img:
+            text = pytesseract.image_to_string(img, lang="eng", config="--psm 3 --oem 1")
+        return detect_page_language(text)
+    except Exception:
+        return "unknown"
+
+
 def vision_ocr_pages(
     image_paths: Sequence[Path],
     translator,
@@ -345,11 +371,24 @@ def main() -> None:
                         for seg in segments
                     ]
                 else:
-                    translation_batches = list(chunk_segments_for_translation(segments, translator.batch_size))
-                    for batch in tqdm(translation_batches, total=len(translation_batches), desc="Translating batches"):
-                        originals = [segment.text for segment in batch]
-                        translated = translator.translate_text_batch(originals)
-                        translated_segments.extend(attach_translations(batch, translated))
+                    for page_segs in page_segments:
+                        if not page_segs:
+                            continue
+                        page_text = " ".join(seg.text for seg in page_segs)
+                        detected = detect_page_language(page_text)
+                        page_num = page_segs[0].page
+                        if detected == "en":
+                            LOGGER.info("Page %s detected as English — skipping translation.", page_num)
+                            translated_segments.extend([
+                                {**seg.to_dict(), "translated_text": seg.text}
+                                for seg in page_segs
+                            ])
+                        else:
+                            batches = list(chunk_segments_for_translation(page_segs, translator.batch_size))
+                            for batch in batches:
+                                originals = [seg.text for seg in batch]
+                                translated = translator.translate_text_batch(originals)
+                                translated_segments.extend(attach_translations(batch, translated))
             else:
                 LOGGER.warning("OCR produced no text segments. Rebuilding PDF with original page images only.")
 

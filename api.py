@@ -141,12 +141,25 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: 
                     for seg in segments
                 ]
             else:
-                from main import chunk_segments_for_translation
-                batches = list(chunk_segments_for_translation(segments, translator.batch_size))
-                for batch in batches:
-                    originals = [s.text for s in batch]
-                    translated = translator.translate_text_batch(originals)
-                    translated_segments.extend(attach_translations(batch, translated))
+                from main import chunk_segments_for_translation, detect_page_language
+                for page_segs in page_segments:
+                    if not page_segs:
+                        continue
+                    page_text = " ".join(seg.text for seg in page_segs)
+                    detected = detect_page_language(page_text)
+                    page_num = page_segs[0].page
+                    if detected == "en":
+                        LOGGER.info("Page %s detected as English — skipping translation.", page_num)
+                        translated_segments.extend([
+                            {**seg.to_dict(), "translated_text": seg.text}
+                            for seg in page_segs
+                        ])
+                    else:
+                        batches = list(chunk_segments_for_translation(page_segs, translator.batch_size))
+                        for batch in batches:
+                            originals = [s.text for s in batch]
+                            translated = translator.translate_text_batch(originals)
+                            translated_segments.extend(attach_translations(batch, translated))
 
     return image_paths, translated_segments
 

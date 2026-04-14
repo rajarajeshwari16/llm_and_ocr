@@ -19,8 +19,8 @@ ocr:
 translation:
   project: scholarship-463408
   credentials_path: gemini_variable.json
-  location: global
-  model: gemini-3-flash-preview
+  location: us-central1
+  model: gemini-2.5-flash
   batch_size: 20
   temperature: 0.1
   max_output_tokens: 16384
