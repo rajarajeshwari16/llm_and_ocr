@@ -17,7 +17,7 @@ ocr:
   paragraph_gap_multiplier: 1.2
 
 translation:
-  provider: vertex_gemini       # options: vertex_gemini | passthrough
+  provider: vertex_gemini         # options: vertex_gemini | passthrough
   project: scholarship-463408
   credentials_path: gemini_variable.json
   location: global
