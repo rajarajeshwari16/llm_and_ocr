@@ -23,7 +23,7 @@ from main import (
     LANG_NAMES,
 )
 from rebuild import rebuild_translated_pdf
-from translate import VertexTranslator
+from translate import create_translator, create_summarizer
 
 
 logging.basicConfig(
@@ -57,20 +57,14 @@ def load_config():
         return yaml.safe_load(f) or {}, config_path
 
 
-def build_translator(config: dict, config_path: Path) -> VertexTranslator:
+def build_translator(config: dict, config_path: Path):
+    return create_translator(config.get("translation", {}), config_path.parent)
+
+
+def build_summarizer(config: dict, config_path: Path):
     translator_cfg = config.get("translation", {})
-    config_dir = config_path.parent
-    return VertexTranslator(
-        project=translator_cfg.get("project"),
-        credentials_path=resolve_config_relative_path(config_dir, translator_cfg.get("credentials_path")),
-        location=translator_cfg.get("location", "us-central1"),
-        model_name=translator_cfg.get("model"),
-        temperature=translator_cfg.get("temperature", 0.1),
-        max_output_tokens=translator_cfg.get("max_output_tokens", 16384),
-        batch_size=translator_cfg.get("batch_size", 20),
-        max_retries=translator_cfg.get("max_retries", 5),
-        retry_base_delay=translator_cfg.get("retry_base_delay_seconds", 2.0),
-    )
+    summarization_cfg = config.get("summarization", translator_cfg)
+    return create_summarizer(summarization_cfg, config_path.parent)
 
 
 # Gemini 2.5 Flash pricing (per 1M tokens)
@@ -83,21 +77,29 @@ MODEL_PRICING = {
     "gemini-3.1-flash-lite-preview": {"input": 0.25, "output": 1.50},
 }
 
-def get_token_usage_and_cost(translator: VertexTranslator) -> dict:
+def get_token_usage_and_cost(translator, summarizer=None) -> dict:
     trans_in  = getattr(translator, "_translation_input_tokens", 0)
     trans_out = getattr(translator, "_translation_output_tokens", 0)
-    summ_in   = getattr(translator, "_summary_input_tokens", 0)
-    summ_out  = getattr(translator, "_summary_output_tokens", 0)
+    summ_obj  = summarizer if summarizer is not None else translator
+    summ_in   = getattr(summ_obj, "_summary_input_tokens", 0)
+    summ_out  = getattr(summ_obj, "_summary_output_tokens", 0)
     total_in  = trans_in + summ_in
     total_out = trans_out + summ_out
-    pricing   = MODEL_PRICING.get(translator.model_name, {"input": 0, "output": 0})
-    cost_usd  = (total_in * pricing["input"] + total_out * pricing["output"]) / 1_000_000
+
+    trans_pricing = MODEL_PRICING.get(translator.model_name, {"input": 0, "output": 0})
+    summ_pricing  = MODEL_PRICING.get(summ_obj.model_name, {"input": 0, "output": 0})
+    cost_usd = (
+        (trans_in * trans_pricing["input"] + trans_out * trans_pricing["output"]) +
+        (summ_in  * summ_pricing["input"]  + summ_out  * summ_pricing["output"])
+    ) / 1_000_000
+
     LOGGER.info(
-        "Token usage — model: %s | translation in: %s out: %s | summary in: %s out: %s | total: %s | cost: $%.6f",
-        translator.model_name, trans_in, trans_out, summ_in, summ_out, total_in + total_out, cost_usd,
+        "Token usage — translation model: %s in: %s out: %s | summary model: %s in: %s out: %s | total: %s | cost: $%.6f",
+        translator.model_name, trans_in, trans_out, summ_obj.model_name, summ_in, summ_out, total_in + total_out, cost_usd,
     )
     return {
-        "model": translator.model_name,
+        "translation_model": translator.model_name,
+        "summarization_model": summ_obj.model_name,
         "translation_input_tokens": trans_in,
         "translation_output_tokens": trans_out,
         "summary_input_tokens": summ_in,
@@ -107,7 +109,7 @@ def get_token_usage_and_cost(translator: VertexTranslator) -> dict:
     }
 
 
-def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator: VertexTranslator, need_layout: bool = False):
+def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator, need_layout: bool = False):
     render_cfg = config.get("render", {})
     dpi = render_cfg.get("dpi", 250)
     image_format = render_cfg.get("image_format", "png")
@@ -253,9 +255,12 @@ def build_summary_text(summary: dict) -> str:
     lines = ["Document Summary", "=" * 16, ""]
     for key, value in summary.items():
         label = key.replace("_", " ").title()
-        content = "" if value is None else str(value)
         lines.append(f"{label}:")
-        lines.append(content)
+        if isinstance(value, list):
+            for item in value:
+                lines.append(f"  - {item}")
+        else:
+            lines.append("" if value is None else str(value))
         lines.append("")
     return "\n".join(lines).strip() + "\n"
 
@@ -337,6 +342,7 @@ async def translate_pdf(
 
     config, config_path = load_config()
     translator = build_translator(config, config_path)
+    summarizer = build_summarizer(config, config_path)
 
     output_filename = f"translated_{file.filename}"
     output_pdf = OUTPUT_DIR / output_filename
@@ -362,13 +368,14 @@ async def translate_pdf(
     base_url = str(request.base_url).rstrip("/")
     download_url = f"{base_url}/download/{output_filename}"
 
-    token_info = get_token_usage_and_cost(translator)
+    token_info = get_token_usage_and_cost(translator, summarizer)
     return JSONResponse(content={
         "message": "Translation successful",
         "download_url": download_url,
         "filename": output_filename,
         "token_usage": token_info,
     })
+
 
 
 @app.post("/summary")
@@ -386,6 +393,7 @@ async def summarize_pdf(
 
     config, config_path = load_config()
     translator = build_translator(config, config_path)
+    summarizer = build_summarizer(config, config_path)
 
     summary_txt_filename = f"summary_{Path(file.filename).stem}.txt"
     summary_json_filename = f"summary_{Path(file.filename).stem}.json"
@@ -402,7 +410,7 @@ async def summarize_pdf(
             _, translated_segments = run_ocr_and_translate(
                 input_pdf, lang, config, translator
             )
-            summary = summarize_translated_text(translated_segments, translator)
+            summary = summarize_translated_text(translated_segments, summarizer)
         except Exception as exc:
             LOGGER.exception("Summary generation failed")
             raise HTTPException(status_code=500, detail=str(exc))
@@ -417,7 +425,7 @@ async def summarize_pdf(
         base_url = str(request.base_url).rstrip("/")
         response_payload = dict(summary)
         response_payload["url_summary"] = f"{base_url}/download/{summary_txt_filename}"
-        response_payload["token_usage"] = get_token_usage_and_cost(translator)
+        response_payload["token_usage"] = get_token_usage_and_cost(translator, summarizer)
 
         return JSONResponse(content=response_payload)
 
@@ -438,25 +446,16 @@ async def compare_models(
     config, config_path = load_config()
 
     COMPARE_MODELS = [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
         "gemini-3-flash-preview",
-        "gemini-3.1-flash-lite-preview",
     ]
 
     def run_for_model(model_name: str) -> dict:
-        # Build a translator with overridden model
-        translator_cfg = config.get("translation", {})
-        config_dir = config_path.parent
-        translator = VertexTranslator(
-            project=translator_cfg.get("project"),
-            credentials_path=resolve_config_relative_path(config_dir, translator_cfg.get("credentials_path")),
-            location=translator_cfg.get("location", "us-central1"),
-            model_name=model_name,
-            temperature=translator_cfg.get("temperature", 0.1),
-            max_output_tokens=translator_cfg.get("max_output_tokens", 16384),
-            batch_size=translator_cfg.get("batch_size", 20),
-            max_retries=translator_cfg.get("max_retries", 5),
-            retry_base_delay=translator_cfg.get("retry_base_delay_seconds", 2.0),
-        )
+        # Build translator and summarizer with overridden model for comparison
+        overridden_cfg = {**config.get("translation", {}), "model": model_name}
+        translator = create_translator(overridden_cfg, config_path.parent)
+        summarizer = create_summarizer({**config.get("summarization", overridden_cfg), "model": model_name}, config_path.parent)
 
         with tempfile.TemporaryDirectory(prefix=f"api_compare_{model_name}_") as tmp:
             input_pdf = Path(tmp) / file.filename
@@ -465,12 +464,12 @@ async def compare_models(
                 _, translated_segments = run_ocr_and_translate(
                     input_pdf, lang, config, translator
                 )
-                summarize_translated_text(translated_segments, translator)
+                summarize_translated_text(translated_segments, summarizer)
             except Exception as exc:
                 LOGGER.exception("Compare failed for model %s", model_name)
                 return {"model": model_name, "error": str(exc)}
 
-        return get_token_usage_and_cost(translator)
+        return get_token_usage_and_cost(translator, summarizer)
 
     # Run all models in parallel using threads
     loop = asyncio.get_event_loop()
@@ -478,10 +477,16 @@ async def compare_models(
         *[loop.run_in_executor(None, run_for_model, m) for m in COMPARE_MODELS]
     )
 
+    USD_TO_INR = 92.72
     return JSONResponse(content={
         "document": file.filename,
         "language": lang,
         "results": [
-            {"model": COMPARE_MODELS[i], **results[i]} for i in range(len(COMPARE_MODELS))
+            {
+                "model": COMPARE_MODELS[i],
+                **results[i],
+                "estimated_cost_inr": round(results[i].get("estimated_cost_usd", 0) * USD_TO_INR, 4),
+            }
+            for i in range(len(COMPARE_MODELS))
         ],
     })

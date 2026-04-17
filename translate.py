@@ -3,8 +3,9 @@ import logging
 import os
 import re
 import time
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Dict, Iterable, List, Sequence
 
 import google.auth
 from google import genai
@@ -19,7 +20,182 @@ def chunk_segments_for_translation(segments: Sequence, batch_size: int) -> Itera
         yield segments[index : index + batch_size]
 
 
-class VertexTranslator:
+# ---------------------------------------------------------------------------
+# Abstract base — all translators must implement these three methods
+# ---------------------------------------------------------------------------
+
+class BaseTranslator(ABC):
+    @abstractmethod
+    def translate_text_batch(self, text_list: List[str]) -> List[str]: ...
+
+    @abstractmethod
+    def translate_single_text(self, text: str) -> str: ...
+
+    @abstractmethod
+    def ocr_translate_page_image(self, image_path: str, page_number: int, lang_name: str, english_only: bool = False) -> list: ...
+
+
+# ---------------------------------------------------------------------------
+# Passthrough — no-op translator, returns text as-is (for English docs)
+# ---------------------------------------------------------------------------
+
+class PassthroughTranslator(BaseTranslator):
+    def __init__(self):
+        self.model_name = "passthrough"
+        self._translation_input_tokens = 0
+        self._translation_output_tokens = 0
+
+    def translate_text_batch(self, text_list: List[str]) -> List[str]:
+        return text_list
+
+    def translate_single_text(self, text: str) -> str:
+        return text
+
+    def ocr_translate_page_image(self, image_path: str, page_number: int, lang_name: str, english_only: bool = False) -> list:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Factory — create translator from config
+# ---------------------------------------------------------------------------
+
+def create_translator(translation_cfg: dict, config_dir: Path) -> BaseTranslator:
+    from main import resolve_config_relative_path
+    provider = translation_cfg.get("provider", "vertex_gemini")
+    if provider == "passthrough":
+        LOGGER.info("Translation provider: passthrough (no-op)")
+        return PassthroughTranslator()
+    if provider == "vertex_gemini":
+        LOGGER.info("Translation provider: vertex_gemini (model=%s)", translation_cfg.get("model"))
+        return VertexTranslator(
+            project=translation_cfg.get("project"),
+            credentials_path=resolve_config_relative_path(config_dir, translation_cfg.get("credentials_path")),
+            location=translation_cfg.get("location", "us-central1"),
+            model_name=translation_cfg.get("model"),
+            temperature=translation_cfg.get("temperature", 0.1),
+            max_output_tokens=translation_cfg.get("max_output_tokens", 16384),
+            batch_size=translation_cfg.get("batch_size", 20),
+            max_retries=translation_cfg.get("max_retries", 5),
+            retry_base_delay=translation_cfg.get("retry_base_delay_seconds", 2.0),
+        )
+    raise ValueError(f"Unknown translation provider: '{provider}'. Valid options: vertex_gemini, passthrough")
+
+
+# ---------------------------------------------------------------------------
+# VertexSummarizer — separate summarization service with its own config
+# ---------------------------------------------------------------------------
+
+class VertexSummarizer:
+    def __init__(
+        self,
+        project: str,
+        credentials_path: str,
+        location: str,
+        model_name: str,
+        temperature: float,
+        max_output_tokens: int,
+        max_retries: int,
+        retry_base_delay: float,
+    ) -> None:
+        self.model_name = model_name
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
+        self._summary_input_tokens = 0
+        self._summary_output_tokens = 0
+
+        if credentials_path and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+            resolved = Path(credentials_path).expanduser().resolve()
+            if resolved.exists():
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(resolved)
+
+        credentials, detected_project = google.auth.default()
+        resolved_project = project or detected_project
+        self.client = genai.Client(
+            vertexai=True,
+            project=resolved_project,
+            location=location,
+            http_options=HttpOptions(api_version="v1"),
+        )
+        self.generation_config = GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            response_mime_type="application/json",
+        )
+
+    def summarize(self, translated_segments: List[Dict]) -> Dict:
+        full_text = "\n".join(
+            seg.get("translated_text", "").strip()
+            for seg in translated_segments
+            if seg.get("translated_text", "").strip()
+        )
+        if not full_text:
+            return {}
+
+        prompt = (
+            "You are a legal document analyst. Read the following translated land/legal document text and provide a structured English summary.\n"
+            "Rules:\n"
+            "- Output ONLY a valid JSON object. No explanations, no markdown, no extra text.\n"
+            "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
+            "- Use exactly these keys:\n"
+            '  "document_type": string\n'
+            '  "parties_involved": array of strings - each party as a separate item. Format: ["VENDOR: details", "PURCHASER: details"]\n'
+            '  "property_details": array of strings - each distinct property detail or boundary as a separate item. Format: ["Survey No: ...", "Extent: ...", "Boundaries: ..."]\n'
+            '  "key_dates": array of strings - each date as a separate item. Format: ["12-10-2011: Deed execution", "18-07-2005: Vendor acquisition"]\n'
+            '  "legal_terms": array of strings - each legal term or clause as a separate item. Format: ["Absolute Sale Deed", "Occupancy Rights", ...]\n'
+            '  "summary": string - write a detailed, elaborate paragraph explaining the full context of the document, '
+            'what it means legally, who is involved, what land or property is affected, what actions were taken, '
+            'and any important implications. Minimum 5-6 sentences.\n'
+            "- If a section has no information, use an empty array [].\n\n"
+            f"Document Text:\n{full_text}"
+        )
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=self.generation_config,
+                )
+                usage = getattr(response, "usage_metadata", None)
+                if usage:
+                    self._summary_input_tokens += getattr(usage, "prompt_token_count", 0) or 0
+                    self._summary_output_tokens += getattr(usage, "candidates_token_count", 0) or 0
+                raw = (response.text or "").strip()
+                raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
+                raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)
+                return json.loads(raw.strip())
+            except Exception as exc:
+                if attempt == self.max_retries:
+                    raise RuntimeError(f"Summarization failed after {self.max_retries} attempts.") from exc
+                delay = self.retry_base_delay * (2 ** (attempt - 1))
+                LOGGER.warning("Summarization attempt %s/%s failed: %s. Retrying in %.1f s.", attempt, self.max_retries, exc, delay)
+                time.sleep(delay)
+        return {}
+
+
+def create_summarizer(summarization_cfg: dict, config_dir: Path) -> VertexSummarizer:
+    from main import resolve_config_relative_path
+    provider = summarization_cfg.get("provider", "vertex_gemini")
+    if provider != "vertex_gemini":
+        raise ValueError(f"Unknown summarization provider: '{provider}'. Valid options: vertex_gemini")
+    LOGGER.info("Summarization provider: vertex_gemini (model=%s)", summarization_cfg.get("model"))
+    return VertexSummarizer(
+        project=summarization_cfg.get("project"),
+        credentials_path=resolve_config_relative_path(config_dir, summarization_cfg.get("credentials_path")),
+        location=summarization_cfg.get("location", "us-central1"),
+        model_name=summarization_cfg.get("model", "gemini-2.5-flash"),
+        temperature=summarization_cfg.get("temperature", 0.1),
+        max_output_tokens=summarization_cfg.get("max_output_tokens", 16384),
+        max_retries=summarization_cfg.get("max_retries", 5),
+        retry_base_delay=summarization_cfg.get("retry_base_delay_seconds", 2.0),
+    )
+
+
+# ---------------------------------------------------------------------------
+# VertexTranslator — existing implementation, now extends BaseTranslator
+# ---------------------------------------------------------------------------
+
+class VertexTranslator(BaseTranslator):
     def __init__(
         self,
         project: str | None,

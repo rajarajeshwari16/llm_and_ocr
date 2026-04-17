@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from ocr import OCRSegment, ocr_page_image, validate_tesseract
 from rebuild import rebuild_translated_pdf
-from translate import VertexTranslator, chunk_segments_for_translation
+from translate import create_translator, create_summarizer, chunk_segments_for_translation
 
 
 LOGGER = logging.getLogger("pdf_translate")
@@ -247,59 +247,9 @@ def get_numbered_output_path(output_path: Path) -> Path:
         counter += 1
 
 
-def summarize_translated_text(translated_segments: List[Dict], translator) -> Dict:
-    full_text = "\n".join(
-        seg.get("translated_text", "").strip()
-        for seg in translated_segments
-        if seg.get("translated_text", "").strip()
-    )
-    if not full_text:
-        return {}
-
-    prompt = (
-        "You are a legal document analyst. Read the following translated land/legal document text and provide a structured English summary.\n"
-        "Rules:\n"
-        "- Output ONLY a valid JSON object. No explanations, no markdown, no extra text.\n"
-        "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
-        "- Use exactly these keys:\n"
-        '  "document_type": string\n'
-        '  "parties_involved": string\n'
-        '  "property_details": string\n'
-        '  "key_dates": string\n'
-        '  "legal_terms": string\n'
-        '  "summary": string - write a detailed, elaborate paragraph explaining the full context of the document, '
-        'what it means legally, who is involved, what land or property is affected, what actions were taken, '
-        'and any important implications. Minimum 5-6 sentences.\n'
-        "- If a section has no information, use an empty string.\n\n"
-        f"Document Text:\n{full_text}"
-    )
-
-    from google.genai.types import GenerateContentConfig
-    json_config = GenerateContentConfig(
-        temperature=translator.generation_config.temperature,
-        max_output_tokens=translator.generation_config.max_output_tokens,
-        response_mime_type="application/json",
-    )
-
-    response = translator.client.models.generate_content(
-        model=translator.model_name,
-        contents=prompt,
-        config=json_config,
-    )
-
-    # Track summary tokens separately
-    usage = getattr(response, "usage_metadata", None)
-    if usage:
-        input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
-        translator._summary_input_tokens = getattr(translator, "_summary_input_tokens", 0) + input_tokens
-        translator._summary_output_tokens = getattr(translator, "_summary_output_tokens", 0) + output_tokens
-
-    import json, re
-    raw = (response.text or "").strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-    raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)
-    return json.loads(raw.strip())
+def summarize_translated_text(translated_segments: List[Dict], summarizer) -> Dict:
+    """Delegate summarization to the injected summarizer instance."""
+    return summarizer.summarize(translated_segments)
 
 
 def main() -> None:
@@ -329,17 +279,8 @@ def main() -> None:
     LOGGER.info("Output will be saved to %s", output_pdf)
     LOGGER.info("Starting pipeline for %s", input_pdf)
 
-    translator = VertexTranslator(
-        project=args.project or translator_config.get("project"),
-        credentials_path=resolve_config_relative_path(config_dir, translator_config.get("credentials_path")),
-        location=args.location or translator_config.get("location", "us-central1"),
-        model_name=args.model or translator_config.get("model"),
-        temperature=translator_config.get("temperature", 0.1),
-        max_output_tokens=translator_config.get("max_output_tokens", 2048),
-        batch_size=translator_config.get("batch_size", 20),
-        max_retries=translator_config.get("max_retries", 5),
-        retry_base_delay=translator_config.get("retry_base_delay_seconds", 2.0),
-    )
+    translator = create_translator(translator_config, config_dir)
+    summarizer = create_summarizer(config.get("summarization", translator_config), config_dir)
 
     with tempfile.TemporaryDirectory(prefix="pdf_translate_") as tmp_dir_name:
         tmp_dir = Path(tmp_dir_name)
@@ -401,7 +342,7 @@ def main() -> None:
 
         if translated_segments:
             LOGGER.info("Generating document summary...")
-            summary = summarize_translated_text(translated_segments, translator)
+            summary = summarize_translated_text(translated_segments, summarizer)
             if summary:
                 summary_path = output_pdf.with_suffix(".summary.txt")
                 summary_path.write_text(summary, encoding="utf-8")

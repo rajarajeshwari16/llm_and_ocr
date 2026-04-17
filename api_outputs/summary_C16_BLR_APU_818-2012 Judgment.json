@@ -1,8 +1,43 @@
 {
-  "document_type": "JUDGEMENT",
-  "parties_involved": "PLAINTIFF: Azim Premji Trust, No.134, Corporate Office, Next to Wipro, Sarjapura Road, Dodddakannelli, Bengaluru. (Represented by Adv., Sri. P.A.). DEFENDANTS: 1. Rama, S/o late Munivenkatappa, Aged: 31 years; 2. Bheema, S/o late Munivenkatappa, Aged: 31 years; 3. Venkatamma, W/o late Munivenkatappa, Aged: 76 years; 4. Chinnamma, D/o late Munivenkatappa, Aged: 41 years; 5. Gowramma, D/o late Munivenkatappa, Aged: 38 years; 6. Shanthamma, D/o late Munivenkatappa, Aged: 38 years. All R/at: Boorgunte village, Sarjapura hobli, Anekal taluk, Bengaluru. (D1, 4, 5 & 6 represented by Adv, Sri. M.Y.M. D2 & 3 are placed Ex-parte).",
-  "property_details": "The suit properties, referred to as schedule A and B, consist of two adjacent land parcels: Sy. No. 72/1, measuring 1 acre 35 guntas, and Sy. No. 72/3, measuring 21 guntas. These properties are situated at Gorgunte village, Sarjapura hobli, Anekal taluk. The plaintiff acquired these lands through registered sale deeds, and the katha is in the plaintiff's name. The historical ownership includes Chinnarayappa, his sons Pappaiah and Muniswamy @ Muniyappa, Mr. Anwar Khan, and Papaiaha.",
-  "key_dates": "Date of Institution of Suit: 22-11-2012. Date of commencement of recording evidence: 16-07-2022. Date of pronouncing Judgment: 26-07-2022. Absolute sale deed dates: 08.08.2011 (Ex.P.1), 11.05.2011 (Ex.P.2), 25.07.2005 (Ex.P.4), 05.06.1967 (Ex.P.7), 02.11.1972 (Ex.P.8). Conversion order dates: 04.06.2011 (Ex.P.5), 07.03.2011 (Ex.P.6). Alleged trespass attempt date: 15.10.2012.",
-  "legal_terms": "COURT OF CIVIL JUDGE IN THE IV ADDL. & JMFC, O.S.No., PLAINTIFF, DEFENDANTS, Adv., Ex-parte, Suit for Permanent Injunction, Judgment, Registered Private Trust, Indian Trust Act, 1982, Companies Act, 1956, Lawful owner, Absolute possession and enjoyment, Sy. No., Guntas, Schedule A and B suit properties, Registered sale deed, Peaceful possession, Katha, Trespass, Suit summons, Written statement, Counsel, P.W.1, Ex.P., Oral and documentary evidence, Points for consideration, Affirmative, Decreed with cost, Henchmen, agents, supporters, workers, administrators, legal attorneys, representative, Restrained by an order of permanent injunction, Interfering, meddling, Final decree, General Power of Attorney, Conversion order.",
-  "summary": "This document is a judgment from the Court of Civil Judge in Anekal, dated 26-07-2022, concerning Original Suit No. 818/2012. The plaintiff, Azim Premji Trust, filed the suit seeking a permanent injunction against six defendants, all related to late Munivenkatappa, to protect its peaceful possession and enjoyment of two land parcels, Sy. No. 72/1 (1 acre 35 guntas) and Sy. No. 72/3 (21 guntas), located in Gorgunte village, Anekal taluk. The Trust asserted lawful ownership and continuous peaceful possession since acquiring the properties through registered sale deeds in 2011, tracing the title through earlier transactions back to 1967. The plaintiff alleged that the defendants, described as land grabbers, attempted to trespass on the property on 15.10.2012. Defendants 2 and 3 were declared ex-parte, while the remaining defendants, despite appearing through counsel, failed to file a written statement or contest the plaintiff's evidence. The court, finding the plaintiff's oral and documentary evidence unchallenged and sufficient to prove peaceful possession and enjoyment, ruled in favor of the Azim Premji Trust. Consequently, the suit was decreed with costs, and the defendants, along with their agents and associates, were permanently restrained from interfering or meddling with the plaintiff's peaceful possession and enjoyment of the schedule suit properties."
+  "document_type": "Judgment and Decree for Permanent Injunction",
+  "parties_involved": [
+    "PLAINTIFF: Azim Premji Trust, Doddakannelli, No.134, Sarjapura Road, Bengaluru, represented by Trustee Azim Premji Trustee Private Limited",
+    "DEFENDANT 1: Rama, S/o late Munivenkatappa",
+    "DEFENDANT 2: Bheema, S/o late Munivenkatappa",
+    "DEFENDANT 3: Venkatamma, W/o late Munivenkatappa",
+    "DEFENDANT 4: Chinnamma, D/o late Munivenkatappa",
+    "DEFENDANT 5: Gowramma, D/o late Munivenkatappa",
+    "DEFENDANT 6: Shanthamma, D/o late Munivenkatappa"
+  ],
+  "property_details": [
+    "Schedule A: Survey No. 72/1, measuring 1 acre 35 guntas",
+    "Schedule B: Survey No. 72/3, measuring 21 guntas",
+    "Location: Boorgunte (also referred as Gorgunte) village, Sarjapura hobli, Anekal taluk",
+    "Status: Adjacent lands with katha standing in the name of the plaintiff"
+  ],
+  "key_dates": [
+    "05-06-1967: Registered sale deed executed by Pappaiah @ Muniswamy and Muniyappa in favor of Mr. Anwar Khan",
+    "02-11-1972: Registered sale deed executed by Anwar Khan in favor of Papaiaha",
+    "25-07-2005: Absolute sale deed (Ex.P.4)",
+    "07-03-2011: Conversion order (Ex.P.6)",
+    "11-05-2011: Registered sale deed (Ex.P.2) in favor of plaintiff",
+    "04-06-2011: Conversion order (Ex.P.5)",
+    "08-08-2011: Registered sale deed (Ex.P.1) in favor of plaintiff",
+    "15-10-2012: Date of alleged trespass and interference by defendants",
+    "22-11-2012: Date of institution of suit",
+    "26-07-2022: Date of pronouncing judgment"
+  ],
+  "legal_terms": [
+    "Permanent Injunction",
+    "Absolute Sale Deed",
+    "General Power of Attorney",
+    "Conversion Order",
+    "Ex-parte",
+    "Katha",
+    "Lawful Possession",
+    "Indian Trust Act 1882",
+    "Companies Act 1956",
+    "Adverse Inference"
+  ],
+  "summary": "This judgment, delivered by the Court of the IV Additional Civil Judge and JMFC at Anekal, resolves a legal dispute (O.S. No. 818/2012) regarding a suit for permanent injunction filed by the Azim Premji Trust. The plaintiff sought to protect its lawful possession and ownership of two adjacent land parcels in Boorgunte village, identified as Survey No. 72/1 and 72/3, totaling 2 acres and 16 guntas. The plaintiff established its title through a series of registered sale deeds dating back to 1967, culminating in its own acquisition in 2011, supported by conversion orders and updated katha records. The defendants, who are the legal heirs of late Munivenkatappa, were accused of attempting to trespass and interfere with the property on October 15, 2012. Despite being served summons, the defendants failed to file written statements or effectively contest the evidence, leading the court to draw an adverse inference against them. Ultimately, the court ruled in favor of the plaintiff, granting a permanent injunction that restrains the defendants and their agents from interfering with the plaintiff's peaceful possession and enjoyment of the suit properties."
 }

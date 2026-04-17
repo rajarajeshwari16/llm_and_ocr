@@ -17,11 +17,23 @@ ocr:
   paragraph_gap_multiplier: 1.2
 
 translation:
+  provider: vertex_gemini       # options: vertex_gemini | passthrough
   project: scholarship-463408
   credentials_path: gemini_variable.json
-  location: us-central1
-  model: gemini-2.5-flash
+  location: global
+  model: gemini-3-flash-preview
   batch_size: 20
+  temperature: 0.1
+  max_output_tokens: 16384
+  max_retries: 5
+  retry_base_delay_seconds: 2.0
+
+summarization:
+  provider: vertex_gemini       # options: vertex_gemini | passthrough
+  project: scholarship-463408
+  credentials_path: gemini_variable.json
+  location: global
+  model: gemini-3-flash-preview
   temperature: 0.1
   max_output_tokens: 16384
   max_retries: 5
@@ -37,3 +49,5 @@ rebuild:
   text_margin: 2
   overlay_fill_color: [1, 1, 1]
   text_color: [0, 0, 0]
+
+
