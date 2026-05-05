@@ -5,7 +5,9 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from typing import Optional
 
+import psycopg2
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -23,7 +25,7 @@ from main import (
     LANG_NAMES,
 )
 from rebuild import rebuild_translated_pdf
-from translate import create_translator, create_summarizer
+from translate import create_translator, create_summarizer, PassthroughTranslator
 
 
 logging.basicConfig(
@@ -49,6 +51,52 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+DB_CONFIG = {
+    "host": "da-srv-prod.postgres.database.azure.com",
+    "port": 5432,
+    "user": "land_prod_user",
+    "password": "Land_prod_user#2025",
+    "database": "land_documents",
+    "sslmode": "require",
+}
+
+
+def fetch_document_context(document_id: int) -> Optional[dict]:
+    """Fetch location, document type and category from DB for a given document_id."""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                d.document_name,
+                dt.name  AS document_type,
+                dc.name  AS category,
+                l.name   AS location,
+                s2.name  AS state
+            FROM land.documents d
+            LEFT JOIN land.document_types     dt ON d.document_type_id = dt.document_type_id
+            LEFT JOIN land.document_category  dc ON dt.category_id     = dc.category_id
+            LEFT JOIN land.site               s  ON d.site_id          = s.site_id
+            LEFT JOIN land.location           l  ON s.location_id      = l.location_id
+            LEFT JOIN land.state              s2 ON l.state_id         = s2.state_id
+            WHERE d.document_id = %s
+        """, (document_id,))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return {
+            "document_name": row[0],
+            "document_type": row[1],
+            "category":      row[2],
+            "location":      row[3],
+            "state":         row[4],
+        }
+    except Exception as exc:
+        LOGGER.warning("Could not fetch document context from DB for id=%s: %s", document_id, exc)
+        return None
 
 
 def load_config():
@@ -124,11 +172,25 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator, 
     image_paths = save_page_images(input_pdf, image_dir, dpi=dpi, fmt=image_format)
 
     is_english = lang == "eng"
+    is_passthrough = isinstance(translator, PassthroughTranslator)
+
+    # When translation is passthrough but Vision OCR is needed,
+    # create a temporary Gemini extractor using summarization config — for text extraction only.
+    ocr_extractor = translator
+    if use_vision_ocr and is_passthrough:
+        summ_cfg = config.get("summarization", config.get("translation", {}))
+        config_dir = resolve_config_path(None).parent
+        ocr_extractor = create_translator({**summ_cfg, "provider": "vertex_gemini"}, config_dir)
+        LOGGER.info("Translation is passthrough — using Gemini Vision to extract original-language text for direct summarization.")
+
     if use_vision_ocr:
         lang_name = LANG_NAMES.get(lang, lang)
         if is_english:
             LOGGER.info("Source language is English — Vision OCR will extract text only, no translation.")
-        translated_segments = vision_ocr_pages(image_paths, translator, lang_name, max_workers=4, english_only=is_english)
+        # english_only=True extracts text verbatim without translating.
+        # Used for actual English docs OR passthrough mode (send original language text to summarizer).
+        extract_verbatim = is_english or is_passthrough
+        translated_segments = vision_ocr_pages(image_paths, ocr_extractor, lang_name, max_workers=4, english_only=extract_verbatim)
     else:
         from ocr import validate_tesseract
         validate_tesseract(config.get("ocr", {}), lang)
@@ -136,8 +198,8 @@ def run_ocr_and_translate(input_pdf: Path, lang: str, config: dict, translator, 
         segments = flatten(page_segments)
         translated_segments = []
         if segments:
-            if is_english:
-                LOGGER.info("Source language is English — skipping translation, using OCR text as-is.")
+            if is_english or is_passthrough:
+                LOGGER.info("Skipping translation — using original text as-is.")
                 translated_segments = [
                     {**seg.to_dict(), "translated_text": seg.text}
                     for seg in segments
@@ -383,10 +445,12 @@ async def summarize_pdf(
     request: Request,
     file: UploadFile = File(...),
     lang: str = Form("hin"),
+    document_id: Optional[int] = Form(None),
 ):
     """
     Upload a scanned PDF and get back a structured English summary.
     lang: hin | kan | tam | tel | eng
+    document_id: optional — if provided, fetches location/type/category from DB for richer context
     """
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
@@ -394,6 +458,15 @@ async def summarize_pdf(
     config, config_path = load_config()
     translator = build_translator(config, config_path)
     summarizer = build_summarizer(config, config_path)
+
+    # Fetch document context from DB if document_id provided
+    doc_context = None
+    if document_id:
+        doc_context = fetch_document_context(document_id)
+        if doc_context:
+            LOGGER.info("Document context fetched: %s", doc_context)
+        else:
+            LOGGER.warning("No document context found in DB for document_id=%s", document_id)
 
     summary_txt_filename = f"summary_{Path(file.filename).stem}.txt"
     summary_json_filename = f"summary_{Path(file.filename).stem}.json"
@@ -410,7 +483,7 @@ async def summarize_pdf(
             _, translated_segments = run_ocr_and_translate(
                 input_pdf, lang, config, translator
             )
-            summary = summarize_translated_text(translated_segments, summarizer)
+            summary = summarize_translated_text(translated_segments, summarizer, doc_context=doc_context)
         except Exception as exc:
             LOGGER.exception("Summary generation failed")
             raise HTTPException(status_code=500, detail=str(exc))

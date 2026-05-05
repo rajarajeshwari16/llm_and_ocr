@@ -122,7 +122,69 @@ class VertexSummarizer:
             response_mime_type="application/json",
         )
 
-    def summarize(self, translated_segments: List[Dict]) -> Dict:
+    def _build_prompt(self, full_text: str, doc_context: dict = None) -> str:
+        is_sale_deed = False
+        context_line = ""
+
+        if doc_context:
+            doc_type  = (doc_context.get("document_type") or "").strip()
+            location  = (doc_context.get("location") or "").strip()
+            state     = (doc_context.get("state") or "").strip()
+            category  = (doc_context.get("category") or "").strip()
+            is_sale_deed = "sale deed" in doc_type.lower()
+            context_line = (
+                f"Document Context: Type='{doc_type}', Category='{category}', "
+                f"Location='{location}', State='{state}'.\n"
+            )
+
+        if is_sale_deed:
+            return (
+                "You are a legal document analyst specializing in Indian land Sale Deeds.\n"
+                f"{context_line}"
+                "Read the following Sale Deed text and extract all details in a structured JSON format.\n"
+                "Rules:\n"
+                "- Output ONLY a valid JSON object. No explanations, no markdown, no extra text.\n"
+                "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
+                "- Use exactly these keys:\n"
+                '  "document_type": string\n'
+                '  "document_number": string - deed/document number\n'
+                '  "execution_date": string\n'
+                '  "registration_date": string\n'
+                '  "seller": string - full name, father name, address, PAN\n'
+                '  "buyer": string - full name/entity, representative, address, PAN\n'
+                '  "stamp_duty": string - amount and mode of payment\n'
+                '  "property_value": string - total sale consideration\n'
+                '  "property_area_schedule": array of strings - each schedule as separate item with survey no, extent, village, hobli, taluk, district\n'
+                '  "land_conversion": array of strings - conversion order number, date, authority for each survey number\n'
+                '  "property_history": array of strings - chain of title, previous owners and transactions\n'
+                '  "parties_involved": array of strings - Format: ["VENDOR: details", "PURCHASER: details"]\n'
+                '  "key_dates": array of strings - Format: ["DD-MM-YYYY: event"]\n'
+                '  "legal_terms": array of strings\n'
+                '  "summary": string - detailed paragraph covering full context, legal implications, parties, property, and any encumbrances or conditions. Minimum 5-6 sentences.\n'
+                "- If a section has no information, use an empty string or empty array [].\n\n"
+                f"Document Text:\n{full_text}"
+            )
+
+        # Generic prompt for all other document types
+        return (
+            "You are a legal document analyst. Read the following land/legal document text "
+            "(which may be in English or an Indian language such as Hindi or Kannada) and provide a structured English summary.\n"
+            f"{context_line}"
+            "Rules:\n"
+            "- Output ONLY a valid JSON object. No explanations, no markdown, no extra text.\n"
+            "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
+            "- Use exactly these keys:\n"
+            '  "document_type": string\n'
+            '  "parties_involved": array of strings - Format: ["VENDOR: details", "PURCHASER: details"]\n'
+            '  "property_details": array of strings - each distinct property detail or boundary as a separate item\n'
+            '  "key_dates": array of strings - Format: ["DD-MM-YYYY: event"]\n'
+            '  "legal_terms": array of strings\n'
+            '  "summary": string - detailed paragraph, minimum 5-6 sentences.\n'
+            "- If a section has no information, use an empty array [].\n\n"
+            f"Document Text:\n{full_text}"
+        )
+
+    def summarize(self, translated_segments: List[Dict], doc_context: dict = None) -> Dict:
         full_text = "\n".join(
             seg.get("translated_text", "").strip()
             for seg in translated_segments
@@ -131,23 +193,7 @@ class VertexSummarizer:
         if not full_text:
             return {}
 
-        prompt = (
-            "You are a legal document analyst. Read the following translated land/legal document text and provide a structured English summary.\n"
-            "Rules:\n"
-            "- Output ONLY a valid JSON object. No explanations, no markdown, no extra text.\n"
-            "- Preserve all legal terminology, names, survey numbers, dates, and amounts exactly.\n"
-            "- Use exactly these keys:\n"
-            '  "document_type": string\n'
-            '  "parties_involved": array of strings - each party as a separate item. Format: ["VENDOR: details", "PURCHASER: details"]\n'
-            '  "property_details": array of strings - each distinct property detail or boundary as a separate item. Format: ["Survey No: ...", "Extent: ...", "Boundaries: ..."]\n'
-            '  "key_dates": array of strings - each date as a separate item. Format: ["12-10-2011: Deed execution", "18-07-2005: Vendor acquisition"]\n'
-            '  "legal_terms": array of strings - each legal term or clause as a separate item. Format: ["Absolute Sale Deed", "Occupancy Rights", ...]\n'
-            '  "summary": string - write a detailed, elaborate paragraph explaining the full context of the document, '
-            'what it means legally, who is involved, what land or property is affected, what actions were taken, '
-            'and any important implications. Minimum 5-6 sentences.\n'
-            "- If a section has no information, use an empty array [].\n\n"
-            f"Document Text:\n{full_text}"
-        )
+        prompt = self._build_prompt(full_text, doc_context)
 
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -158,8 +204,19 @@ class VertexSummarizer:
                 )
                 usage = getattr(response, "usage_metadata", None)
                 if usage:
-                    self._summary_input_tokens += getattr(usage, "prompt_token_count", 0) or 0
-                    self._summary_output_tokens += getattr(usage, "candidates_token_count", 0) or 0
+                    input_tokens = (
+                        getattr(usage, "prompt_token_count", None) or
+                        getattr(usage, "input_token_count", None) or
+                        getattr(usage, "total_input_tokens", None) or 0
+                    )
+                    output_tokens = (
+                        getattr(usage, "candidates_token_count", None) or
+                        getattr(usage, "output_token_count", None) or
+                        getattr(usage, "total_output_tokens", None) or 0
+                    )
+                    self._summary_input_tokens += input_tokens
+                    self._summary_output_tokens += output_tokens
+                    LOGGER.info("Summarization token usage — input: %s, output: %s", input_tokens, output_tokens)
                 raw = (response.text or "").strip()
                 raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
                 raw = re.sub(r"\s*```\s*$", "", raw, flags=re.MULTILINE)

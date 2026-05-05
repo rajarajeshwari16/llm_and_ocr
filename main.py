@@ -247,9 +247,9 @@ def get_numbered_output_path(output_path: Path) -> Path:
         counter += 1
 
 
-def summarize_translated_text(translated_segments: List[Dict], summarizer) -> Dict:
+def summarize_translated_text(translated_segments: List[Dict], summarizer, doc_context: dict = None) -> Dict:
     """Delegate summarization to the injected summarizer instance."""
-    return summarizer.summarize(translated_segments)
+    return summarizer.summarize(translated_segments, doc_context=doc_context)
 
 
 def main() -> None:

@@ -2,39 +2,40 @@ Document Summary
 ================
 
 Document Type:
-Mutation Copy (M.R. Number: H4)
+Mutation Copy
 
 Parties Involved:
-  - POSSESSOR: M/s Azim Premji Educational Trust
-  - POWER OF ATTORNEY HOLDER: B A Vijaya Kumar
-  - AUTHORITY: Assistant Commissioner's Office, Ballari
-  - ISSUING OFFICER: Revenue Inspector, Hobli Ballari
+  - HOLDER: ಮೆಸೆರ್ಸ್ ಅಜೀಮ್ ಪ್ರೇಮ್ ಜಿ ಎಡುಕೇಶನಲ್ ಹೋಲ್ಡರ್ - ಬಿ ವಿ ವಿಜಯ ಕುಮಾರ್
 
 Property Details:
-  - District: Ballari, Taluk: Ballari, Hobli: Ballari, Village: Andhralu
+  - District: ಬಳ್ಳಾರಿ (Ballari)
+  - Taluk: ಬಳ್ಳಾರಿ (Ballari)
+  - Hobli: ಬಳ್ಳಾರಿ (Ballari)
+  - Village: ಅಂದ್ರಾಳು (Andralu)
   - Survey Number: 133/*/4
-  - Total Area: 4.00.00.00 Acres/Cents
-  - Possessed Area: 3.45.00.00 Acres/Cents
+  - Total Area: 4 acres 00 cents
+  - Area under possession: 3 acres 45 cents
   - Khata Number: 159
-  - Soil Type: Patta Black
   - Land Revenue: 2.93
-  - Kharab(b) land included in total area
 
 Key Dates:
-  - 19-03-2013: Previous Partition (MR H25/2012-2013)
-  - 15-03-2015: Assistant Commissioner Court Order Date (Kam.Aa/417/2014-15)
-  - 31-07-2015: Mutation Order Acceptance Date
-  - 2015-2016: Transaction Year
+  - 19-03-2013: Date of previous mutation (MR H25/2012-2013)
+  - 15-03-2015: Date of Assistant Commissioner's order
+  - 31-07-2015: Date of current mutation order
 
 Legal Terms:
-  - Mutation Copy
-  - RTC Change
-  - Court Order
-  - Power of Attorney
-  - Kharab(b)
-  - Patta Soil
-  - Data Correction AC
-  - Khata Number
+  - ಮ್ಯುಟೇಶನ್ ಪ್ರತಿ (Mutation Copy)
+  - ಕೋರ್ಟ್ ಆದೇಶ (Court Order)
+  - ಪಹಣಿ ಬದಲಾವಣೆ (Pahani Change)
+  - ಸ್ವಾಧೀನತೆ (Possession)
+  - ಸರ್ವೆ ನಂಬರು (Survey Number)
+  - ಖಾತೆ ನಂಬರು (Khata Number)
+  - ರಾಜಸ್ವ ನಿರೀಕ್ಷಕರು (Revenue Inspector)
+  - ಉಪವಿಭಾಗಾಧಿಕಾರಿಗಳ ಕಾರ್ಯಾಲಯ (Office of the Assistant Commissioner)
+  - MR No: H4
+  - Transaction No: 8
+  - Source: Data Correction AC
+  - Order No: ಕಂ.ಅ/417/2014-15
 
 Summary:
-This document is a Mutation Copy (M.R. Number H4) for the transaction year 2015-2016, pertaining to land located in Andhralu Village, Ballari Taluk. The mutation was initiated following a court order from the Assistant Commissioner's Office (Order No. Kam.Aa/417/2014-15) dated March 15, 2015, specifically for a data correction and RTC change. The property involved is Survey Number 133/*/4, with a total area of 4.00 acres, out of which 3.45 acres are held by M/s Azim Premji Educational Trust. The Trust is represented by its Power of Attorney holder, B A Vijaya Kumar, under Khata Number 159. This legal action updates the Record of Rights, Tenancy and Crops (RTC) to reflect the current possession and rights as established by a prior partition dated March 19, 2013. The final mutation order was officially accepted and signed by the Revenue Inspector of Ballari Hobli on July 31, 2015, ensuring the official land records align with the judicial directives and administrative corrections.
+This document is a Mutation Copy (MR No. H4) for the year 2015-2016, issued for a property in Andralu village, Ballari Taluk. The mutation was processed based on a court/official order (ಕೋರ್ಟ್ ಆದೇಶ) for the purpose of data correction. It pertains to 3 acres and 45 cents of land within Survey No. 133/*/4, held under Khata No. 159. The change was sanctioned by an order from the Office of the Assistant Commissioner, Ballari, dated 15-03-2015, with reference number ಕಂ.ಅ/417/2014-15. The mutation corrects the name of the holder to 'ಮೆಸೆರ್ಸ್ ಅಜೀಮ್ ಪ್ರೇಮ್ ಜಿ ಎಡುಕೇಶನಲ್ ಹೋಲ್ಡರ್ - ಬಿ ವಿ ವಿಜಯ ಕುಮಾರ್'. The final mutation order was passed by the Revenue Inspector of Ballari Hobli on 31-07-2015.

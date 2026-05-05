@@ -2,38 +2,58 @@ Document Summary
 ================
 
 Document Type:
-Lease Deed of Nazul Land
+Lease Deed (Permanent Lease of Nazul Land)
+
+Document Number:
+MP059712021A1084857
+
+Execution Date:
+25-01-2021
+
+Registration Date:
+27-01-2021
+
+Seller:
+GOVERNOR OF M.P. through CHANDRASHEKHAR SHRIVASTAVA, Tehsildar, Tehsil Huzur, Address: OLD SECRETARIAT, TEHSIL HUZUR, BHOPAL, Madhya Pradesh, INDIA
+
+Buyer:
+AZIM PREMJI FOUNDATION FOR DEVELOPMENT, Authorized Person: ABHISHEK SINGH RATHORE, Registered Office: 134, Doddakannelli, Sarjapur Road, Bangalore, Karnataka - 560035, State Office: Plot No. 163-164, Trilanga Co-operative Housing Society, E-8 Ext. Trilanga, Bhopal, Madhya Pradesh, INDIA
+
+Stamp Duty:
+Rs. 53,86,292 paid via E-Stamp Code 01010525012021017164 (Govt. Stamp Duty: Rs. 48,96,629, Upkar: Rs. 4,89,663)
+
+Property Value:
+Rs. 9,71,23,201 (Premium Amount); Market Value: Rs. 38,84,92,800
+
+Property Area Schedule:
+  - Survey No: 40 (15.150 Hectare out of 24.33 Hectare) and Survey No: 51 (5.084 Hectare out of 7.340 Hectare), Total Area: 20.234 Hectare, Village: Kanasaiya, Patwari Halka No: 20/37, Tehsil: Huzur, District: Bhopal, Boundaries: North: Khasra 41 (Govt Road) & 42 (Govt Land), South: Khasra 51 & remaining land of 40, East: Khasra 41 (Govt Road), West: Khasra 1196/53 Nala & Bhopal Bypass Road
+
+Land Conversion:
+  - Property Type: Diverted Agricultural Land, Purpose: Educational, Location: Rural Area, Non-Planning Area
+
+Property History:
+  - The land is Nazul (Government) land allotted by the Governor of Madhya Pradesh to the Azim Premji Foundation for Development following recommendations from the Madhya Pradesh Cabinet meeting for charitable/educational purposes.
 
 Parties Involved:
-  - LESSOR: Governor of Madhya Pradesh through Chandrashekhar Shrivastava, Tehsildar, Tehsil Huzur, Bhopal
-  - LESSEE: Azim Premji Foundation for Development through Authorized Person Abhishek Singh Rathore
-
-Property Details:
-  - Location: Village Kanasaiya, P.H. No. 20/37, Tehsil Huzur, District Bhopal, Madhya Pradesh
-  - Survey No: Khasra No. 40 (15.150 hectares out of 24.33 hectares) and Khasra No. 51 (5.084 hectares out of 7.340 hectares)
-  - Total Extent: 20.234 hectares
-  - Boundaries North: Khasra No. 41 Government road and Khasra No. 42 Government land
-  - Boundaries South: Remaining land of Khasra No. 51 and Khasra No. 40
-  - Boundaries East: Khasra No. 41 Government road
-  - Boundaries West: Khasra No. 1196/53 drain and new Bhopal bypass road
-  - Property Type: Agricultural Land (Diverted for Educational Use)
+  - VENDOR: Governor of M.P. through Chandrashekhar Shrivastava (Tehsildar, Huzur)
+  - PURCHASER: Azim Premji Foundation for Development through Authorized Signatory Abhishek Singh Rathore
 
 Key Dates:
-  - 25-01-2021: Deed execution date
-  - 27-01-2021: Registration date
-  - 22-01-2021: Payment of premium via challan number 0029125053
-  - 22-01-2021: Payment of annual ground rent via challan number 0029125051
-  - 31-03-2120: Expiry date of the initial lease period
+  - 22-01-2021: Payment of Premium via Challan 0029125053
+  - 22-01-2021: Payment of first year annual rent via Challan 0029125051
+  - 25-01-2021: Execution of Lease Deed
+  - 27-01-2021: Registration of Document
+  - 31-03-2120: Expiry date of the lease term
 
 Legal Terms:
-  - Permanent Lease of Nazul Land
-  - Premium (Conversion Fee)
-  - Annual Ground Rent
-  - Right of Re-entry
-  - Covenant of Uninterrupted Use
-  - Non-transferable and Non-partitionable
+  - Permanent Lease (Sthayi Patta)
+  - Premium (Nazarana)
+  - Annual Ground Rent (Bhu-Bhatak)
+  - Re-entry (Punah Pravesh)
+  - Non-transferable (Ahastantaraniya)
+  - Covenant for Quiet Enjoyment
   - Renewal Clause (99 years)
-  - Madhya Pradesh Land Revenue Code (Assessment and Re-assessment of Land Revenue) Rules, 2018
+  - Nazul Land
 
 Summary:
-This document is a Permanent Lease Deed for Nazul Land executed on January 25, 2021, between the Governor of Madhya Pradesh as the Lessor and the Azim Premji Foundation for Development as the Lessee. The lease pertains to a total area of 20.234 hectares situated in Village Kanasaiya, Tehsil Huzur, District Bhopal, specifically comprising portions of Khasra numbers 40 and 51. The land is granted for the specific purpose of constructing and maintaining a university, with a lease term extending until March 31, 2120, and a provision for successive 99-year renewals. The Lessee paid a premium of Rs. 9,71,23,201 and an initial annual ground rent of Rs. 8,09,360, following a recommendation by the Madhya Pradesh Cabinet for the charitable organization. Legally, the deed imposes strict conditions including a requirement to complete construction within three years, a prohibition on transferring or partitioning the land without prior permission, and a right of re-entry for the Lessor in case of rent default or breach of conditions. The property is strategically located on the Bhopal bypass road and is classified for educational use, with the deed ensuring that the foundation's activities remain non-discriminatory.
+This document is a Permanent Lease Deed of Nazul Land executed on January 25, 2021, between the Governor of Madhya Pradesh and the Azim Premji Foundation for Development. The lease grants 20.234 hectares of land in Village Kanasaiya, Tehsil Huzur, Bhopal, specifically for the construction and maintenance of a university. The foundation paid a premium of Rs. 9,71,23,201 and is liable for an annual ground rent of Rs. 8,09,360, which is subject to periodic revision. The lease term is set to expire on March 31, 2120, with a provision for 99-year renewals. Key conditions include a requirement to commence construction within one year and complete it within three years, and a strict prohibition on transferring or sub-leasing the land without prior government approval. The property is strategically located on the Bhopal Bypass Road and is designated for educational use.
